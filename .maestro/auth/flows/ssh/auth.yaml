@@ -1,6 +1,5 @@
 appId: com.viscouspot.gitsync
 ---
-
 - runFlow: ./assert.yaml
 - tapOn: "GENERATE KEYS"
 - assertVisible: "ssh-ed25519.*"

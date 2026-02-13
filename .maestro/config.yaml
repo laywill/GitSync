@@ -9,5 +9,5 @@ executionOrder:
         - ssh
 
 flows:
-  - onboarding/*
-  - auth/*
+    - onboarding/*
+    - auth/*

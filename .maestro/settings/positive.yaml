@@ -32,5 +32,3 @@ appId: com.viscouspot.gitsync
 - runFlow: flows/showcase/finish.yaml
 - runFlow: ../home/flows/sync_now/assert.yaml
 - runFlow: ../common/kill.yaml
-
-
