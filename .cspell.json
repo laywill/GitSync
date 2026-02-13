@@ -14,7 +14,6 @@
         "markdown",
         "misc",
         "powershell",
-        "ru_ru",
         "ru_RU",
         "rust",
         "softwareTerms"
@@ -25,11 +24,35 @@
     "ignoreWords": [
         "anys",
         "kinded",
-        "vars"
+        "vars",
+        "lineageos",
+        "notif",
+        "stls",
+        "xcassets",
+        "Recents"
     ],
     "language": "en-GB",
     "version": "0.2",
     "words": [
-        "GitSync"
+        "GitSync",
+        "GITEA",
+        "dialog",
+        "sdcard"
+    ],
+    "languageSettings": [
+        {
+            "languageId": "*",
+            "includeRegExpList": [
+            "fastlane\\metadata\\android\\de"
+            ],
+            "locale": "de_DE"
+        },
+        {
+            "languageId": "*",
+            "includeRegExpList": [
+            "fastlane\\metadata\\android\\ru"
+            ],
+            "locale": "ru_RU"
+        }
     ]
 }
