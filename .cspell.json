@@ -1,0 +1,35 @@
+{
+    "allowCompoundWords": true,
+    "dictionaries": [
+        "bash",
+        "companies",
+        "dart",
+        "de_DE",
+        "en_US",
+        "en-GB",
+        "es-ES",
+        "filetypes",
+        "flutter",
+        "fonts",
+        "markdown",
+        "misc",
+        "powershell",
+        "ru_ru",
+        "ru_RU",
+        "rust",
+        "softwareTerms"
+    ],
+    "flagWords": [
+        "hte"
+    ],
+    "ignoreWords": [
+        "anys",
+        "kinded",
+        "vars"
+    ],
+    "language": "en-GB",
+    "version": "0.2",
+    "words": [
+        "GitSync"
+    ]
+}
