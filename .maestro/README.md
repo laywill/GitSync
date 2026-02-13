@@ -21,7 +21,7 @@ Setup iOS
 
 You need to set up the following environment variables to enable the tests for HTTPS and clone operations for GitHub and Gitea repositories.
 
-#### Steps to Set Up:
+#### Steps to Set Up
 
 1. **Copy the Template**:
 

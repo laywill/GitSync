@@ -1,7 +1,7 @@
 <div align="center">
   <br/>
-  <img 
-    src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" width="140" 
+  <img
+    src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp" width="140"
   />
 
   <h3>GitSync</h3>
@@ -70,7 +70,7 @@ Give us a ⭐ if you like our work. Much appreciated!
 
 ## Support
 
-For support, email bugs.viscouspotential@gmail.com or create an issue in this repository.
+For support, email <bugs.viscouspotential@gmail.com> or create an issue in this repository.
 
 ## Build Instructions
 

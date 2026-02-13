@@ -7,7 +7,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import id.flutter.flutter_background_service.BackgroundService
 
-class GitSyncAccessibilityService: AccessibilityService() {
+class GitSyncAccessibilityService : AccessibilityService() {
     private lateinit var enabledInputMethods: List<String>
 
     override fun onCreate() {
@@ -27,6 +27,7 @@ class GitSyncAccessibilityService: AccessibilityService() {
                     accessibilityEventIntent.putExtra("enabledInputMethods", enabledInputMethods.joinToString(","))
                     startService(accessibilityEventIntent)
                 }
+
                 else -> {}
             }
         }

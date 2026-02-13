@@ -1,4 +1,4 @@
-function Resolve-Symlinks {
+function Resolve-Symlink {
     [CmdletBinding()]
     [OutputType([string])]
     param(

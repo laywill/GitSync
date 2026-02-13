@@ -21,7 +21,7 @@ This is how the process of using precompiled binaries looks from the perspective
 
 Note that this assumes that precompiled binaries will be generated during github actions and deployed as github releases.
 
-### Use `build_tool` to generate a key-pair:
+### Use `build_tool` to generate a key-pair
 
 ```
 dart run build_tool gen-key
@@ -44,7 +44,7 @@ precompiled_binaries:
   public_key: <public key from previous step>
 ```
 
-### Configure a github action to build and upload precompiled binaries.
+### Configure a github action to build and upload precompiled binaries
 
 The github action should be run at every commit to main branch (and possibly other branches).
 

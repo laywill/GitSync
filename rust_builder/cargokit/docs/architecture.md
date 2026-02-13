@@ -10,7 +10,7 @@ Cargokit is meant to be included in Flutter plugin (or application) that contain
 
 Cargokit can be either incuded as git submodule or git subtree (required for plugins - as pub does not support submodules for git dependencies).
 
-For a step by step tutorial on integrating Cargokit with a Flutter plugin see https://matejknopp.com/post/flutter_plugin_in_rust_with_no_prebuilt_binaries/.
+For a step by step tutorial on integrating Cargokit with a Flutter plugin see <https://matejknopp.com/post/flutter_plugin_in_rust_with_no_prebuilt_binaries/>.
 
 ## build_tool
 
@@ -44,7 +44,7 @@ When using Cargokit to integrate Rust code with an application (not a plugin) yo
 
 These are used as when providing precompiled binaries for Plugin. See [precompiled_binaries.md](precompiled_binaries.md) for more information.
 
-## Launching the build_tool during build.
+## Launching the build_tool during build
 
 During Flutter build, the build tool can not be launched directly using `dart run`. Rather it is launched through `run_build_tool.sh` and `run_build_tool.cmd`. Because the `build_tool` is shipped as part of plugin, we generally don't want to write into the plugin directory during build, which would happen if the `build_tool` was simply invoked through `dart run` (For example the `.dart_tool/package_config.json` file would get written inside the `build_tool` directory).
 
