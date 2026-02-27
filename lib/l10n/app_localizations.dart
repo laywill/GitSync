@@ -9,6 +9,7 @@ import 'app_localizations_de.dart';
 import 'app_localizations_en.dart';
 import 'app_localizations_es.dart';
 import 'app_localizations_fr.dart';
+import 'app_localizations_ja.dart';
 import 'app_localizations_ru.dart';
 import 'app_localizations_zh.dart';
 
@@ -99,6 +100,7 @@ abstract class AppLocalizations {
     Locale('en'),
     Locale('es'),
     Locale('fr'),
+    Locale('ja'),
     Locale('ru'),
     Locale('zh'),
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
@@ -181,6 +183,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Rename'**
   String get rename;
+
+  /// No description provided for @renameDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename the selected file or folder'**
+  String get renameDescription;
+
+  /// No description provided for @selectAllDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all visible files and folders'**
+  String get selectAllDescription;
+
+  /// No description provided for @deselectAllDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Deselect all selected files and folders'**
+  String get deselectAllDescription;
 
   /// No description provided for @add.
   ///
@@ -1994,6 +2014,12 @@ abstract class AppLocalizations {
   /// **'author name'**
   String get authorNameLabel;
 
+  /// No description provided for @authorNameDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'used to identify you in commit history'**
+  String get authorNameDescription;
+
   /// No description provided for @authorName.
   ///
   /// In en, this message translates to:
@@ -2005,6 +2031,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'author email'**
   String get authorEmailLabel;
+
+  /// No description provided for @authorEmailDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'attached to your commits for attribution'**
+  String get authorEmailDescription;
 
   /// No description provided for @authorEmail.
   ///
@@ -2648,6 +2680,36 @@ abstract class AppLocalizations {
   /// **'Add Submodules'**
   String get submodulesFoundAction;
 
+  /// No description provided for @addRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Remote'**
+  String get addRemote;
+
+  /// No description provided for @deleteRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Remote'**
+  String get deleteRemote;
+
+  /// No description provided for @renameRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename Remote'**
+  String get renameRemote;
+
+  /// No description provided for @remoteName.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote Name'**
+  String get remoteName;
+
+  /// No description provided for @confirmDeleteRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to delete the remote \"%s\"?'**
+  String get confirmDeleteRemote;
+
   /// No description provided for @confirmBranchCheckoutTitle.
   ///
   /// In en, this message translates to:
@@ -2744,11 +2806,23 @@ abstract class AppLocalizations {
   /// **'Ongoing merge conflict'**
   String get ongoingMergeConflict;
 
+  /// No description provided for @networkStallRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Poor network — will retry shortly'**
+  String get networkStallRetry;
+
   /// No description provided for @networkUnavailableRetry.
   ///
   /// In en, this message translates to:
   /// **'Network unavailable!\nGitSync will retry when reconnected'**
   String get networkUnavailableRetry;
+
+  /// No description provided for @failedToResolveAddressMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your internet connection or verify the repository URL is correct.'**
+  String get failedToResolveAddressMessage;
 
   /// No description provided for @pullFailed.
   ///
@@ -2923,6 +2997,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Track Issue & Respond to Messages'**
   String get trackIssue;
+
+  /// No description provided for @createNewRepository.
+  ///
+  /// In en, this message translates to:
+  /// **'Create New Repository'**
+  String get createNewRepository;
+
+  /// No description provided for @noGitRepoFoundMsg.
+  ///
+  /// In en, this message translates to:
+  /// **'No git repository was found in the selected folder. Would you like to create a new one here?'**
+  String get noGitRepoFoundMsg;
+
+  /// No description provided for @remoteSetupLaterMsg.
+  ///
+  /// In en, this message translates to:
+  /// **'You can set up a remote later to sync with a server.'**
+  String get remoteSetupLaterMsg;
+
+  /// No description provided for @localOnlyNoRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Local only — add a remote to sync'**
+  String get localOnlyNoRemote;
+
+  /// No description provided for @noRemoteConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'No remote configured'**
+  String get noRemoteConfigured;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
@@ -2934,7 +3038,7 @@ class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> 
   }
 
   @override
-  bool isSupported(Locale locale) => <String>['de', 'en', 'es', 'fr', 'ru', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>['de', 'en', 'es', 'fr', 'ja', 'ru', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -2963,6 +3067,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsEs();
     case 'fr':
       return AppLocalizationsFr();
+    case 'ja':
+      return AppLocalizationsJa();
     case 'ru':
       return AppLocalizationsRu();
     case 'zh':

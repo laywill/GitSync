@@ -31,6 +31,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constant/dimens.dart';
+import '../ui/dialog/create_repository.dart' as CreateRepositoryDialog;
 import '../ui/dialog/obisidian_git_found.dart' as ObsidianGitFoundDialog;
 import '../ui/dialog/submodules_found.dart' as SubmodulesFoundDialog;
 import 'package:http/http.dart' as http;
@@ -107,7 +108,7 @@ String formatBytes(int? bytes, [int precision = 2]) {
   return '$formattedSize ${['B', 'KB', 'MB', 'GB', 'TB'][base]}';
 }
 
-Future<void> openLogViewer(BuildContext context) async {
+Future<void> openLogViewer(BuildContext context, {List<(String, String)>? deviceInfoEntries}) async {
   final Directory dir = await getTemporaryDirectory();
   final logsDir = Directory("${dir.path}/logs");
 
@@ -138,6 +139,7 @@ Future<void> openLogViewer(BuildContext context) async {
           )
           .toList(),
       type: EditorType.LOGS,
+      deviceInfoEntries: deviceInfoEntries,
     ),
   );
 }
@@ -230,21 +232,39 @@ TextSelectionToolbar globalContextMenuBuilder(BuildContext context, EditableText
   }).toList(),
 );
 
-Future<bool> waitFor(Future<bool> Function() fn, {int maxWaitSeconds = 30}) async {
+Future<T?> waitFor<T>(Future<T?> Function() fn, {int maxWaitSeconds = 30}) async {
   final end = DateTime.now().add(Duration(seconds: maxWaitSeconds));
   while (DateTime.now().isBefore(end)) {
     try {
-      final locked = await fn();
-      if (!locked) return false;
+      final result = await fn();
+      if (result == null) return null;
     } catch (_) {}
     await Future.delayed(const Duration(milliseconds: 100));
   }
-  return true;
+  return await fn();
 }
 
 String buildAccessRefreshToken(String accessToken, DateTime? expirationDate, String? refreshToken) => refreshToken == null
     ? accessToken
     : "$accessToken$conflictSeparator${expirationDate == null ? "" : "${expirationDate.millisecondsSinceEpoch}$conflictSeparator"}$refreshToken";
+
+Future<bool> validateOrInitGitDir(BuildContext context, String dir) async {
+  final isGit = await useDirectory(dir, (_) async {}, (path) async {
+    return GitManager.isGitDir(path);
+  });
+  if (isGit == true) return true;
+
+  bool confirmed = false;
+  await CreateRepositoryDialog.showDialog(context, () {
+    confirmed = true;
+  });
+  if (!confirmed) return false;
+
+  final success = await useDirectory(dir, (_) async {}, (path) async {
+    return await GitManager.initRepository(path);
+  });
+  return success == true;
+}
 
 Future<void> setGitDirPathGetSubmodules(BuildContext context, String dir) async {
   await uiSettingsManager.setGitDirPath(dir);
@@ -500,19 +520,4 @@ extension ValueNotifierExtension on RestorableValue<bool> {
 
     return result;
   }
-}
-
-Future<void> checkPreviousCrash([bool service = false]) async {
-  final previousCrashFlag = await repoManager.getBool(service ? StorageKey.repoman_serviceCrashFlag : StorageKey.repoman_appCrashFlag);
-  if (previousCrashFlag == true) {
-    // TODO: Show dialog that crash might have occurred with button to manually clear locks
-    // How to deal with errors resulting from lock clearing
-    // If in dev build/env show extra information that hot-restart can cause this too.
-  }
-
-  await repoManager.setBool(service ? StorageKey.repoman_serviceCrashFlag : StorageKey.repoman_appCrashFlag, true);
-}
-
-Future<void> clearCrashFlag([bool service = false]) async {
-  await repoManager.setBool(service ? StorageKey.repoman_serviceCrashFlag : StorageKey.repoman_appCrashFlag, false);
 }

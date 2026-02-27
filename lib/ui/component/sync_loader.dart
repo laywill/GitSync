@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:GitSync/api/helper.dart';
 import 'package:GitSync/api/logger.dart';
@@ -7,6 +6,7 @@ import 'package:GitSync/api/manager/git_manager.dart';
 import 'package:GitSync/api/manager/storage.dart';
 import 'package:GitSync/constant/dimens.dart';
 import 'package:GitSync/global.dart';
+import 'package:GitSync/src/rust/api/git_manager.dart' as GitManagerRs;
 import 'package:GitSync/ui/component/custom_showcase.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -22,34 +22,47 @@ class SyncLoader extends StatefulWidget {
   State<SyncLoader> createState() => _SyncLoaderState();
 }
 
-class _SyncLoaderState extends State<SyncLoader> {
+class _SyncLoaderState extends State<SyncLoader> with TickerProviderStateMixin {
   double opacity = 0.0;
-  bool? previousLocked;
-  bool locked = false;
+  String? previousLocked;
+  String? locked;
+  bool get isLocked => locked != null;
   bool erroring = false;
   bool showCheck = false;
 
   Timer? hideCheckTimer;
   Timer? lockedTimer;
 
+  late final AnimationController _arrowController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+
+  late final Animation<double> _arrowAnimation = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeOut)), weight: 40),
+    TweenSequenceItem(tween: ConstantTween(0.0), weight: 20),
+    TweenSequenceItem(tween: Tween(begin: 0.0, end: -1.0).chain(CurveTween(curve: Curves.easeIn)), weight: 40),
+  ]).animate(_arrowController);
+
+  double get _arrowOpacity => 1.0 - _arrowAnimation.value.abs();
+
   @override
   void initState() {
     showCheck = false;
     opacity = 0.0;
 
+    if (isLocked) _arrowController.repeat();
+
     initAsync(() async {
       try {
-        locked = await GitManager.isLocked(waitForUnlock: false, ui: true);
+        locked = await GitManager.isLocked(waitForUnlock: false);
       } catch (e) {
-        locked = false;
+        locked = null;
       }
       erroring = (await repoManager.getStringNullable(StorageKey.repoman_erroring))?.isNotEmpty == true;
       setState(() {});
       lockedTimer = Timer.periodic(const Duration(milliseconds: 200), (_) async {
         final newErroring = (await repoManager.getStringNullable(StorageKey.repoman_erroring))?.isNotEmpty == true;
-        bool newLocked = false;
+        String? newLocked;
         try {
-          newLocked = await GitManager.isLocked(waitForUnlock: false, ui: true);
+          newLocked = await GitManager.isLocked(waitForUnlock: false);
         } catch (e) {}
 
         if (newErroring != erroring) {
@@ -69,6 +82,7 @@ class _SyncLoaderState extends State<SyncLoader> {
 
   @override
   void dispose() {
+    _arrowController.dispose();
     hideCheckTimer?.cancel();
     lockedTimer?.cancel();
 
@@ -77,7 +91,7 @@ class _SyncLoaderState extends State<SyncLoader> {
 
   @override
   Widget build(BuildContext context) {
-    if (previousLocked == true && locked == false) {
+    if (previousLocked != null && locked == null) {
       Future.delayed(Duration(milliseconds: 10), () {
         widget.reload();
       });
@@ -92,25 +106,28 @@ class _SyncLoaderState extends State<SyncLoader> {
         opacity = 0.0;
         setState(() {});
       });
-    } else if (locked == true) {
+    } else if (isLocked) {
       showCheck = false;
       hideCheckTimer?.cancel();
     }
 
+    if (isLocked && !_arrowController.isAnimating) {
+      _arrowController.repeat();
+    } else if (!isLocked && _arrowController.isAnimating) {
+      _arrowController.stop();
+    }
+
+    print("//// locked $locked");
     previousLocked = locked;
 
     return GestureDetector(
       onLongPress: () async {
         try {
-          Directory('${(await getApplicationSupportDirectory()).path}/queues').deleteSync(recursive: true);
+          await GitManagerRs.clearStaleLocks(queueDir: (await getApplicationSupportDirectory()).path, force: true);
         } catch (e) {}
-        try {
-          Directory('${(await getApplicationSupportDirectory()).path}/queues').createSync(recursive: true);
-        } catch (e) {}
-        print("////// deleted");
-
         gitSyncService.isScheduled = false;
         gitSyncService.isSyncing = false;
+        locked = null;
         setState(() {});
       },
       onTap: () async {
@@ -123,6 +140,92 @@ class _SyncLoaderState extends State<SyncLoader> {
       },
       child: Stack(
         children: [
+          if (["Commit", "PushToRepo", "ForcePush", "UploadAndOverwrite", "UploadChanges"].contains(locked))
+            Align(
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: spaceMD + spaceXS,
+                height: spaceMD + spaceXS,
+                child: ClipOval(
+                  child: OverflowBox(
+                    maxWidth: (spaceMD + spaceXS),
+                    maxHeight: (spaceMD + spaceXS),
+                    child: AnimatedBuilder(
+                      animation: _arrowController,
+                      builder: (context, _) {
+                        return Transform.translate(
+                          offset: Offset(0, _arrowAnimation.value * (spaceMD + spaceXS)),
+                          child: SizedBox(
+                            width: spaceMD + spaceXS,
+                            height: spaceMD + spaceXS,
+                            child: Stack(
+                              children: [
+                                FaIcon(
+                                  FontAwesomeIcons.circleUp,
+                                  size: spaceMD + spaceXS,
+                                  color: colours.primaryLight.withValues(alpha: _arrowOpacity),
+                                ),
+                                IgnorePointer(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: colours.primaryDark, width: 6, strokeAlign: BorderSide.strokeAlignCenter),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (["FetchRemote", "PullFromRepo", "ForcePull", "DownloadAndOverwrite", "DownloadChanges"].contains(locked))
+            Align(
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: spaceMD + spaceXS,
+                height: spaceMD + spaceXS,
+                child: ClipOval(
+                  child: OverflowBox(
+                    maxWidth: (spaceMD + spaceXS),
+                    maxHeight: (spaceMD + spaceXS),
+                    child: AnimatedBuilder(
+                      animation: _arrowController,
+                      builder: (context, _) {
+                        return Transform.translate(
+                          offset: Offset(0, -_arrowAnimation.value * (spaceMD + spaceXS)),
+                          child: SizedBox(
+                            width: spaceMD + spaceXS,
+                            height: spaceMD + spaceXS,
+                            child: Stack(
+                              children: [
+                                FaIcon(
+                                  FontAwesomeIcons.circleDown,
+                                  size: spaceMD + spaceXS,
+                                  color: colours.primaryLight.withValues(alpha: _arrowOpacity),
+                                ),
+                                IgnorePointer(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: colours.primaryDark, width: 6, strokeAlign: BorderSide.strokeAlignCenter),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Align(
             alignment: Alignment.center,
             child: CustomShowcase(
@@ -147,8 +250,7 @@ class _SyncLoaderState extends State<SyncLoader> {
               ),
             ),
           ),
-
-          if (locked)
+          if (isLocked)
             Align(
               alignment: Alignment.center,
               child: SizedBox(
@@ -164,7 +266,7 @@ class _SyncLoaderState extends State<SyncLoader> {
             ),
           AnimatedOpacity(
             opacity: erroring ? 1 : 0,
-            duration: Duration(milliseconds: 500),
+            duration: animSlow,
             curve: Curves.easeInOut,
             child: Align(
               alignment: Alignment.center,
@@ -176,8 +278,8 @@ class _SyncLoaderState extends State<SyncLoader> {
             ),
           ),
           AnimatedOpacity(
-            opacity: locked ? 0 : opacity,
-            duration: Duration(milliseconds: 500),
+            opacity: isLocked ? 0 : opacity,
+            duration: animSlow,
             curve: Curves.easeInOut,
             child: Align(
               alignment: Alignment.center,

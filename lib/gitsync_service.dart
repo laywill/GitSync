@@ -22,6 +22,7 @@ class ServiceStrings {
   final String syncScheduled;
   final String detectingChanges;
   final String ongoingMergeConflict;
+  final String networkStallRetry;
 
   const ServiceStrings({
     required this.syncStartPull,
@@ -32,6 +33,7 @@ class ServiceStrings {
     required this.syncScheduled,
     required this.detectingChanges,
     required this.ongoingMergeConflict,
+    required this.networkStallRetry,
   });
 
   factory ServiceStrings.fromMap(Map<String, dynamic> map) {
@@ -44,6 +46,7 @@ class ServiceStrings {
       syncScheduled: map['syncScheduled'] ?? '',
       detectingChanges: map['detectingChanges'] ?? '',
       ongoingMergeConflict: map['ongoingMergeConflict'] ?? '',
+      networkStallRetry: map['networkStallRetry'] ?? '',
     );
   }
 
@@ -57,6 +60,7 @@ class ServiceStrings {
       'syncScheduled': syncScheduled,
       'detectingChanges': detectingChanges,
       'ongoingMergeConflict': ongoingMergeConflict,
+      'networkStallRetry': networkStallRetry,
     };
   }
 }
@@ -83,6 +87,7 @@ class GitsyncService {
     syncScheduled: "Sync Scheduled",
     detectingChanges: "Detecting Changes…",
     ongoingMergeConflict: "Ongoing merge conflict",
+    networkStallRetry: "Poor network — will retry shortly",
   );
   bool isScheduled = false;
   bool isSyncing = false;
@@ -138,6 +143,12 @@ class GitsyncService {
     }
   }
 
+  void _scheduleStallRetry(int repomanRepoindex) {
+    Future.delayed(const Duration(seconds: 30), () {
+      debouncedSync(repomanRepoindex);
+    });
+  }
+
   Future<void> _sync(int repomanRepoindex, [bool forced = false]) async {
     try {
       isSyncing = true;
@@ -147,19 +158,24 @@ class GitsyncService {
 
       final provider = await settingsManager.getGitProvider();
 
+      final remotesList = await GitManager.listRemotes(repomanRepoindex, 3);
+      if (remotesList.isEmpty) {
+        Logger.gmLog(type: LogType.Sync, "No remote configured, skipping sync");
+        isScheduled = false;
+        return;
+      }
+
       if (provider == GitProvider.SSH
           ? (await settingsManager.getGitSshAuthCredentials()).$2.isEmpty
           : (await settingsManager.getGitHttpAuthCredentials()).$2.isEmpty) {
         Logger.gmLog(type: LogType.Sync, "Credentials Not Found");
         Fluttertoast.showToast(msg: "Credentials not found", toastLength: Toast.LENGTH_LONG, gravity: null);
         isScheduled = false;
-        isSyncing = false;
         return;
       }
       if ((await GitManager.getConflicting(repomanRepoindex, 3)).isNotEmpty) {
         Fluttertoast.showToast(msg: s.ongoingMergeConflict, toastLength: Toast.LENGTH_SHORT, gravity: null);
         isScheduled = false;
-        isSyncing = false;
         return;
       }
 
@@ -168,8 +184,8 @@ class GitsyncService {
       }
       Logger.gmLog(type: LogType.Sync, "Start Sync");
 
-      bool? pullResult = null;
-      bool? pushResult = null;
+      bool? pullResult = false;
+      bool? pushResult = false;
 
       await () async {
         final gitDirPath = settingsManager.gitDirPath?.$1;
@@ -183,9 +199,9 @@ class GitsyncService {
         bool synced = false;
 
         final optimisedSyncFlag = await settingsManager.getBool(StorageKey.setman_optimisedSyncExperimental);
-        final recommendedAction = await GitManager.getRecommendedAction(3);
+        int? recommendedAction = await GitManager.getRecommendedAction(3);
 
-        if (optimisedSyncFlag && recommendedAction == null) return;
+        if (optimisedSyncFlag && (recommendedAction == null || recommendedAction == -1)) return;
 
         if (!optimisedSyncFlag || [0, 1, 2, 3].contains(recommendedAction)) {
           Logger.gmLog(type: LogType.Sync, "Start Pull Repo");
@@ -198,6 +214,10 @@ class GitsyncService {
             case null:
               {
                 Logger.gmLog(type: LogType.Sync, "Pull Repo Failed");
+                if (GitManager.lastOperationWasNetworkStall) {
+                  await _displaySyncMessage(settingsManager, s.networkStallRetry);
+                  _scheduleStallRetry(repomanRepoindex);
+                }
                 return;
               }
             case true:
@@ -210,6 +230,9 @@ class GitsyncService {
               }
           }
         }
+
+        recommendedAction = await GitManager.getRecommendedAction(3);
+        if (optimisedSyncFlag && (recommendedAction == null || recommendedAction == -1)) return;
 
         if (!optimisedSyncFlag || [2, 3].contains(recommendedAction)) {
           Logger.gmLog(type: LogType.Sync, "Start Push Repo");
@@ -230,6 +253,10 @@ class GitsyncService {
             case null:
               {
                 Logger.gmLog(type: LogType.Sync, "Push Repo Failed");
+                if (GitManager.lastOperationWasNetworkStall) {
+                  await _displaySyncMessage(settingsManager, s.networkStallRetry);
+                  _scheduleStallRetry(repomanRepoindex);
+                }
                 return;
               }
             case true:
@@ -253,20 +280,21 @@ class GitsyncService {
         await _displaySyncMessage(settingsManager, s.syncComplete);
       }
 
-      Logger.dismissError(null);
-      Logger.gmLog(type: LogType.Sync, "Sync Complete!");
-
-      isSyncing = false;
-
-      if (isScheduled) {
-        Logger.gmLog(type: LogType.Sync, "Scheduled Sync Starting");
-        isScheduled = false;
-        debouncedSync(repomanRepoindex);
+      if (!(pushResult == null || pullResult == null)) {
+        Logger.dismissError(null);
+        Logger.gmLog(type: LogType.Sync, "Sync Complete!");
       }
 
       await GitManager.getRecentCommits(3);
     } catch (e, st) {
       Logger.logError(LogType.SyncException, e, st);
+    } finally {
+      isSyncing = false;
+      if (isScheduled) {
+        Logger.gmLog(type: LogType.Sync, "Scheduled Sync Starting");
+        isScheduled = false;
+        debouncedSync(repomanRepoindex);
+      }
     }
   }
 

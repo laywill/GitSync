@@ -10,7 +10,11 @@ use std::{
     collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+    time::Instant,
 };
 use uuid::Uuid;
 
@@ -24,6 +28,7 @@ pub struct Commit {
     pub deletions: i32,
     pub unpulled: bool,
     pub unpushed: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -31,6 +36,10 @@ pub struct Diff {
     pub insertions: i32,
     pub deletions: i32,
     pub diff_parts: HashMap<String, HashMap<String, String>>,
+}
+
+pub enum ConflictType {
+    Text,
 }
 
 // Also add to lib/api/logger.dart:21
@@ -83,10 +92,16 @@ pub enum LogType {
     DiscardDir,
     DiscardGitIndex,
     DiscardFetchHead,
+    PruneCorruptedObjects,
     GetSubmodules,
     HasGitFilters,
     DownloadChanges,
     UploadChanges,
+    ListRemotes,
+    AddRemote,
+    DeleteRemote,
+    RenameRemote,
+    InitRepo,
 }
 
 trait WithLine {
@@ -137,19 +152,15 @@ pub async fn string_int_list_run_with_lock(
     run_with_lock(queue_dir, index, priority, fn_name, function).await
 }
 
-// pub async fn string_map_stream_run_with_lock(
-//     sink: StreamSink<(String, HashMap<String, String>)>,
-//     queue_dir: &str,
-//     index: i32,
-//     priority: i32,
-//     function: impl Fn() -> DartFnFuture<Option<StreamSink<(String, HashMap<String, String>)>>>
-//         + Send
-//         + Sync
-//         + 'static,
-// ) -> Result<(), git2::Error> {
-//     Ok(())
-//     // run_with_lock(queue_dir, index, priority, function).await
-// }
+pub async fn string_conflicttype_list_run_with_lock(
+    queue_dir: &str,
+    index: i32,
+    priority: i32,
+    fn_name: &str,
+    function: impl Fn() -> DartFnFuture<Option<Vec<(String, ConflictType)>>> + Send + Sync + 'static,
+) -> Result<Option<Vec<(String, ConflictType)>>, git2::Error> {
+    run_with_lock(queue_dir, index, priority, fn_name, function).await
+}
 
 pub async fn string_pair_run_with_lock(
     queue_dir: &str,
@@ -201,7 +212,7 @@ pub async fn void_run_with_lock(
     run_with_lock(queue_dir, index, priority, fn_name, function).await
 }
 
-async fn run_with_lock<T>(
+async fn run_with_lock<T: Default>(
     queue_dir: &str,
     index: i32,
     priority: i32,
@@ -219,22 +230,16 @@ async fn run_with_lock<T>(
 
     let queue_file_path = format!("{}/flock_queue_{}", queues_dir, index);
 
-    let identifier = format!(
-        "{}:{}:{}",
-        priority,
-        fn_name.to_string(),
-        Uuid::new_v4().to_string()
-    );
+    let identifier = format!("{}:{}:{}", priority, fn_name, Uuid::new_v4());
 
-    let mut flock = match Flock::lock(
-        fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&queue_file_path)
-            .unwrap(),
-        FlockArg::LockExclusive,
-    ) {
+    let initial_file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&queue_file_path)
+        .map_err(|e| git2::Error::from_str(&format!("Failed to open queue file: {}", e)))?;
+
+    let mut flock = match Flock::lock(initial_file, FlockArg::LockExclusive) {
         Ok(flock) => flock,
         Err((_file, err)) => {
             return Err(git2::Error::from_str(&format!(
@@ -246,15 +251,17 @@ async fn run_with_lock<T>(
 
     let mut queue_contents = String::new();
 
-    flock.read_to_string(&mut queue_contents).unwrap();
+    flock
+        .read_to_string(&mut queue_contents)
+        .map_err(|e| git2::Error::from_str(&format!("Failed to read queue file: {}", e)))?;
 
     let mut queue_entries: Vec<_> = queue_contents
         .split('\n')
-        .filter(|entry| !entry.is_empty() || !entry.trim().is_empty())
+        .filter(|entry| !entry.trim().is_empty())
         .collect();
 
     let new_priority: i32 = priority;
-    if new_priority == 0 {
+    if new_priority == 1 {
         queue_entries = queue_entries
             .into_iter()
             .enumerate()
@@ -297,89 +304,172 @@ async fn run_with_lock<T>(
         queue_entries.insert(final_insert_index, &identifier);
     }
 
-    flock.seek(SeekFrom::Start(0)).unwrap();
-    flock.set_len(0).unwrap(); // Truncate the file
+    flock
+        .seek(SeekFrom::Start(0))
+        .map_err(|e| git2::Error::from_str(&format!("Failed to seek queue file: {}", e)))?;
+    flock
+        .set_len(0)
+        .map_err(|e| git2::Error::from_str(&format!("Failed to truncate queue file: {}", e)))?;
     flock
         .write_all(queue_entries.join("\n").as_bytes())
-        .unwrap();
+        .map_err(|e| git2::Error::from_str(&format!("Failed to write queue file: {}", e)))?;
 
-    flock.unlock().unwrap();
+    flock
+        .unlock()
+        .map_err(|(_, e)| git2::Error::from_str(&format!("Failed to unlock queue file: {}", e)))?;
 
-    const QUEUE_TIMEOUT_SECS: u64 = 600;
-    let start_time = std::time::Instant::now();
+    const MAX_WAIT_SECS: u64 = 600;
+    const PROBE_INTERVAL_SECS: u64 = 30;
+    let overall_start = std::time::Instant::now();
+    let mut last_probe_time = std::time::Instant::now();
+    let active_lock_path = format!("{}/flock_active_{}", queues_dir, index);
 
-    loop {
-        if start_time.elapsed().as_secs() >= QUEUE_TIMEOUT_SECS {
-            let mut timeout_flock = match Flock::lock(
-                fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(&queue_file_path)
-                    .unwrap(),
-                FlockArg::LockExclusive,
-            ) {
+    // _active_flock drops AFTER _guard (declared second) — preserving correct drop order.
+    // Drop order: _guard first (removes queue entry), then _active_flock (releases flock).
+    let _active_flock = loop {
+        let should_probe = last_probe_time.elapsed().as_secs() >= PROBE_INTERVAL_SECS;
+        let hard_timeout = overall_start.elapsed().as_secs() >= MAX_WAIT_SECS;
+
+        if should_probe || hard_timeout {
+            last_probe_time = std::time::Instant::now();
+
+            let probe_queue_file = match fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&queue_file_path)
+            {
                 Ok(f) => f,
-                Err((_file, err)) => {
-                    return Err(git2::Error::from_str(&format!(
-                        "Timeout waiting for queue position, and failed to acquire lock for cleanup: {}",
-                        err
-                    )));
+                Err(_) => {
+                    // Transient error — skip this probe cycle
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
                 }
             };
 
-            let mut queue_contents = String::new();
-            timeout_flock.read_to_string(&mut queue_contents).unwrap();
+            let mut probe_queue_flock = match Flock::lock(probe_queue_file, FlockArg::LockExclusive)
+            {
+                Ok(f) => f,
+                Err(_) => {
+                    // Transient error — skip this probe cycle
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
 
-            let queue_entries: Vec<_> = queue_contents
-                .split('\n')
-                .filter(|entry| {
-                    *entry != identifier && (!entry.is_empty() || !entry.trim().is_empty())
-                })
-                .collect();
+            // Probe the active lock file (non-blocking)
+            let probe_result = match fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&active_lock_path)
+            {
+                Ok(f) => Some(Flock::lock(f, FlockArg::LockExclusiveNonblock)),
+                Err(_) => None,
+            };
 
-            timeout_flock.seek(SeekFrom::Start(0)).unwrap();
-            timeout_flock.set_len(0).unwrap();
-            timeout_flock
-                .write_all(queue_entries.join("\n").as_bytes())
-                .unwrap();
+            match probe_result {
+                Some(Ok(probe_flock)) => {
+                    // Probe succeeded — no operation is actively running.
+                    // Only evict position 0 if it's not us (it's a dead entry).
+                    let _ = probe_flock.unlock();
 
-            timeout_flock.unlock().unwrap();
+                    let mut queue_contents = String::new();
+                    let _ = probe_queue_flock.read_to_string(&mut queue_contents);
+                    let entries: Vec<&str> = queue_contents
+                        .split('\n')
+                        .filter(|e| !e.trim().is_empty())
+                        .collect();
 
-            return Err(git2::Error::from_str(&format!(
-                "Timeout after {} seconds waiting for queue position",
-                QUEUE_TIMEOUT_SECS
-            )));
+                    if entries.first().is_some_and(|e| *e != identifier) {
+                        let remaining: Vec<&str> = entries[1..].to_vec();
+                        let _ = probe_queue_flock.seek(SeekFrom::Start(0));
+                        let _ = probe_queue_flock.set_len(0);
+                        let _ = probe_queue_flock.write_all(remaining.join("\n").as_bytes());
+                    }
+
+                    let _ = probe_queue_flock.unlock();
+                    continue;
+                }
+                Some(Err(_)) | None => {
+                    // Active lock is held (or probe file inaccessible).
+                    if hard_timeout {
+                        // Self-evict and silently give up — next sync will retry
+                        let mut queue_contents = String::new();
+                        let _ = probe_queue_flock.read_to_string(&mut queue_contents);
+                        let queue_entries: Vec<_> = queue_contents
+                            .split('\n')
+                            .filter(|e| !e.trim().is_empty() && *e != identifier)
+                            .collect();
+                        let _ = probe_queue_flock.seek(SeekFrom::Start(0));
+                        let _ = probe_queue_flock.set_len(0);
+                        let _ = probe_queue_flock.write_all(queue_entries.join("\n").as_bytes());
+                        let _ = probe_queue_flock.unlock();
+
+                        return Ok(T::default());
+                    }
+                    let _ = probe_queue_flock.unlock();
+                }
+            }
         }
 
-        let mut read_flock = match Flock::lock(
-            fs::OpenOptions::new()
-                .read(true)
-                .open(&queue_file_path)
-                .unwrap(),
-            FlockArg::LockExclusive,
-        ) {
-            Ok(read_flock) => read_flock,
-            Err((_file, err)) => {
+        let read_file = match fs::OpenOptions::new().read(true).open(&queue_file_path) {
+            Ok(f) => f,
+            Err(e) => {
                 return Err(git2::Error::from_str(&format!(
-                    "Error locking file for reading: {}",
-                    err
-                )));
+                    "Failed to open queue file during poll: {}",
+                    e
+                )))
             }
         };
 
-        let mut buf = [0; 1024];
-        let bytes_read = read_flock.read(&mut buf).unwrap();
-        let string = std::str::from_utf8(&buf[..bytes_read]).unwrap();
+        let mut read_flock = match Flock::lock(read_file, FlockArg::LockExclusive) {
+            Ok(read_flock) => read_flock,
+            Err((_, e)) => {
+                return Err(git2::Error::from_str(&format!(
+                    "Failed to lock queue file during poll: {}",
+                    e
+                )))
+            }
+        };
 
-        if string.starts_with(&identifier) {
-            read_flock.unlock().unwrap();
-            break;
+        let mut string = String::new();
+        read_flock.read_to_string(&mut string).unwrap_or(0);
+
+        if !string.contains(&*identifier) {
+            let _ = read_flock.unlock();
+            return Ok(T::default());
         }
 
-        read_flock.unlock().unwrap();
+        if string.starts_with(&identifier) {
+            let _ = read_flock.unlock();
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+            // Try non-blocking active lock — if previous op is still releasing,
+            // we'll catch it on the next 100ms poll.
+            let active_file = match fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(&active_lock_path)
+            {
+                Ok(f) => f,
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+            match Flock::lock(active_file, FlockArg::LockExclusiveNonblock) {
+                Ok(flock) => break flock,
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    continue;
+                }
+            }
+        }
+
+        let _ = read_flock.unlock();
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
 
     struct QueueCleanupGuard {
         queue_file_path: String,
@@ -405,9 +495,7 @@ async fn run_with_lock<T>(
 
                 let queue_entries: Vec<_> = queue_contents
                     .split('\n')
-                    .filter(|entry| {
-                        *entry != self.identifier && (!entry.is_empty() || !entry.trim().is_empty())
-                    })
+                    .filter(|entry| *entry != self.identifier && !entry.trim().is_empty())
                     .collect();
 
                 flock.seek(SeekFrom::Start(0))?;
@@ -435,19 +523,24 @@ async fn run_with_lock<T>(
     Ok(result)
 }
 
-pub async fn is_locked(queue_dir: &str, index: i32) -> Result<bool, git2::Error> {
+pub async fn is_locked(queue_dir: &str, index: i32) -> Result<Option<String>, git2::Error> {
     use nix::fcntl::{Flock, FlockArg};
     use std::fs;
     use std::io::Read;
     let queue_file_path = format!("{}/queues/flock_queue_{}", queue_dir, index);
 
-    let mut read_flock = match Flock::lock(
-        fs::OpenOptions::new()
-            .read(true)
-            .open(&queue_file_path)
-            .map_err(|e| git2::Error::from_str(&format!("Error opening queue file: {}", e)))?,
-        FlockArg::LockExclusive,
-    ) {
+    let file = match fs::OpenOptions::new().read(true).open(&queue_file_path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(git2::Error::from_str(&format!(
+                "Error opening queue file: {}",
+                e
+            )))
+        }
+    };
+
+    let mut read_flock = match Flock::lock(file, FlockArg::LockExclusive) {
         Ok(flock) => flock,
         Err((_file, err)) => {
             return Err(git2::Error::from_str(&format!(
@@ -464,20 +557,117 @@ pub async fn is_locked(queue_dir: &str, index: i32) -> Result<bool, git2::Error>
 
     let queue_entries: Vec<&str> = queue_contents
         .split('\n')
-        .filter(|entry| !entry.is_empty())
+        .filter(|entry| !entry.trim().is_empty())
         .collect();
 
     if let Some(first_entry) = queue_entries.get(0) {
         let parts: Vec<&str> = first_entry.split(':').collect();
-        if parts.len() > 0 {
+        if parts.len() >= 2 {
             let priority: i32 = parts[0].parse().unwrap_or(0);
-            return Ok(priority == 3);
+            if priority == 3 {
+                return Ok(Some(parts[1].to_string()));
+            }
         }
     }
 
-    read_flock.unlock().unwrap();
+    Ok(None)
+}
 
-    Ok(false)
+/// Clear stale queue files using flock-based liveness detection.
+///
+/// For each `flock_queue_{index}` file in the queues directory:
+/// 1. Try a non-blocking exclusive flock on the corresponding `flock_active_{index}`.
+/// 2. If the flock succeeds, no operation is actively running for that repo,
+///    so the queue file is safe to truncate.
+/// 3. If the flock fails (EWOULDBLOCK), an operation is in progress —
+///    leave the queue file alone.
+///
+/// The OS automatically releases flocks when a process dies, so crashed
+/// processes are correctly detected as "not running".
+pub fn clear_stale_locks(queue_dir: &str, force: bool) -> Result<(), git2::Error> {
+    use nix::fcntl::{Flock, FlockArg};
+    use std::fs;
+    use std::io::{Seek, SeekFrom, Write};
+
+    let queues_dir = format!("{}/queues", queue_dir);
+    let dir = match fs::read_dir(&queues_dir) {
+        Ok(d) => d,
+        Err(_) => return Ok(()), // No queues directory yet — nothing to clear
+    };
+
+    for entry in dir {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+
+        // Only process queue files, not active files
+        if !name.starts_with("flock_queue_") {
+            continue;
+        }
+
+        if force {
+            // Debug mode: skip flock probe, clear unconditionally.
+            // Hot restart keeps the native process alive so flocks from
+            // the previous Dart session are still held, making the probe
+            // return EWOULDBLOCK for zombie operations.
+            if let Ok(queue_file) = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(entry.path())
+            {
+                if let Ok(mut queue_flock) = Flock::lock(queue_file, FlockArg::LockExclusive) {
+                    let _ = queue_flock.seek(SeekFrom::Start(0));
+                    let _ = queue_flock.set_len(0);
+                    let _ = queue_flock.unlock();
+                }
+            }
+            continue;
+        }
+
+        let index_str = name.trim_start_matches("flock_queue_");
+        let active_file_path = format!("{}/flock_active_{}", queues_dir, index_str);
+
+        // Try non-blocking flock on the active file
+        let active_file = match fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&active_file_path)
+        {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+
+        match Flock::lock(active_file, FlockArg::LockExclusiveNonblock) {
+            Ok(active_flock) => {
+                // Flock succeeded — no active operation. Truncate the queue file.
+                if let Ok(queue_file) = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(entry.path())
+                {
+                    if let Ok(mut queue_flock) = Flock::lock(queue_file, FlockArg::LockExclusive) {
+                        let _ = queue_flock.seek(SeekFrom::Start(0));
+                        let _ = queue_flock.set_len(0);
+                        let _ = queue_flock.write_all(b"");
+                        let _ = queue_flock.unlock();
+                    }
+                }
+                // Release the active flock probe
+                let _ = active_flock.unlock();
+            }
+            Err(_) => {
+                // Flock failed (EWOULDBLOCK) — active operation in progress.
+                // Leave the queue file alone.
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn init(homepath: Option<String>) {
@@ -488,9 +678,9 @@ pub fn init(homepath: Option<String>) {
 
     flutter_rust_bridge::setup_default_user_utils();
 
-    // unsafe {
-    //     set_verify_owner_validation(false).unwrap();
-    // }
+    unsafe {
+        git2::opts::set_verify_owner_validation(false).unwrap();
+    }
 
     if let Ok(mut config) = git2::Config::open_default() {
         let _ = config.set_str("safe.directory", "*");
@@ -591,6 +781,7 @@ pub async fn clone_repository(
         true
     });
 
+    let last_progress = Arc::new(AtomicI32::new(-1));
     callbacks.transfer_progress(move |stats| {
         let total = stats.total_objects() as i32;
         let received = stats.indexed_objects() as i32;
@@ -599,10 +790,13 @@ pub async fn clone_repository(
         } else {
             0
         };
-        let callback = Arc::clone(&clone_progress_callback);
-        flutter_rust_bridge::spawn(async move {
-            callback(progress).await;
-        });
+        let prev = last_progress.swap(progress, Ordering::Relaxed);
+        if prev != progress {
+            let callback = Arc::clone(&clone_progress_callback);
+            flutter_rust_bridge::spawn(async move {
+                callback(progress).await;
+            });
+        }
         true
     });
 
@@ -617,6 +811,13 @@ pub async fn clone_repository(
 
     set_author(&repo, &author);
     repo.cleanup_state().unwrap();
+
+    let mut remote = repo.find_remote("origin")?;
+    let callbacks = get_default_callbacks(Some(&provider), Some(&credentials));
+    let mut fo2 = FetchOptions::new();
+    fo2.update_fetchhead(true);
+    fo2.remote_callbacks(callbacks);
+    let _ = remote.fetch::<&str>(&[], Some(&mut fo2), None);
 
     _log(
         Arc::clone(&log_callback),
@@ -1246,6 +1447,8 @@ pub async fn get_commit_diff(
 pub async fn get_recent_commits(
     path_string: &String,
     remote_name: &str,
+    cached_diff_stats: HashMap<String, (i32, i32)>,
+    skip: usize,
     log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
 ) -> Result<Vec<Commit>, git2::Error> {
     let log_callback = Arc::new(log);
@@ -1284,11 +1487,59 @@ pub async fn get_recent_commits(
         }
     }
 
+    // Build unpulled/unpushed OID sets via bounded revwalks
+    let mut unpulled_oids = std::collections::HashSet::new();
+    let mut unpushed_oids = std::collections::HashSet::new();
+
+    if let (Some(l_oid), Some(r_oid)) = (local_oid, remote_oid) {
+        // Unpulled: commits reachable from remote but not from local
+        let mut rw = swl!(repo.revwalk())?;
+        if rw.push(r_oid).is_ok() {
+            let _ = rw.hide(l_oid);
+            for oid_result in rw.take(50) {
+                if let Ok(oid) = oid_result {
+                    unpulled_oids.insert(oid);
+                }
+            }
+        }
+
+        // Unpushed: commits reachable from local but not from remote
+        let mut rw = swl!(repo.revwalk())?;
+        if rw.push(l_oid).is_ok() {
+            let _ = rw.hide(r_oid);
+            for oid_result in rw.take(50) {
+                if let Ok(oid) = oid_result {
+                    unpushed_oids.insert(oid);
+                }
+            }
+        }
+    }
+
     swl!(revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME))?;
+
+    let mut tag_map: std::collections::HashMap<git2::Oid, Vec<String>> =
+        std::collections::HashMap::new();
+    if let Ok(tag_names) = repo.tag_names(None) {
+        for tag_name in tag_names.iter().flatten() {
+            if let Ok(reference) = repo.find_reference(&format!("refs/tags/{}", tag_name)) {
+                let target_oid = if let Ok(tag_obj) = reference.peel(git2::ObjectType::Commit) {
+                    tag_obj.id()
+                } else if let Some(oid) = reference.target() {
+                    oid
+                } else {
+                    continue;
+                };
+                tag_map
+                    .entry(target_oid)
+                    .or_default()
+                    .push(tag_name.to_string());
+            }
+        }
+    }
 
     let mut commits: Vec<Commit> = Vec::new();
 
-    for oid_result in revwalk.take(50) {
+    for oid_result in revwalk.skip(skip).take(50) {
         let oid = match oid_result {
             Ok(id) => id,
             Err(_) => continue,
@@ -1309,44 +1560,33 @@ pub async fn get_recent_commits(
             .to_string();
         let reference = format!("{}", oid);
 
-        let parent = commit.parent(0).ok();
-        let mut diff_opts = DiffOptions::new();
-        let diff = match parent {
-            Some(parent_commit) => repo.diff_tree_to_tree(
-                Some(&swl!(parent_commit.tree())?),
-                Some(&swl!(commit.tree())?),
-                Some(&mut diff_opts),
-            )?,
-            None => swl!(repo.diff_tree_to_tree(
-                None,
-                Some(&swl!(commit.tree())?),
-                Some(&mut diff_opts)
-            ))?,
-        };
-
-        // START OF SLOWER SECTION
-
-        let (additions, deletions) = match diff.stats() {
-            Ok(s) => (s.insertions() as i32, s.deletions() as i32),
-            Err(_) => (0, 0),
-        };
-
-        // -----
-
-        let (ahead_local, _) = if let Some(local_oid) = local_oid {
-            swl!(repo.graph_ahead_behind(oid, local_oid))?
+        let (additions, deletions) = if let Some(&(a, d)) = cached_diff_stats.get(&reference) {
+            (a, d)
         } else {
-            (0, 0)
+            let parent = commit.parent(0).ok();
+            let mut diff_opts = DiffOptions::new();
+            let diff = match parent {
+                Some(parent_commit) => repo.diff_tree_to_tree(
+                    Some(&swl!(parent_commit.tree())?),
+                    Some(&swl!(commit.tree())?),
+                    Some(&mut diff_opts),
+                )?,
+                None => swl!(repo.diff_tree_to_tree(
+                    None,
+                    Some(&swl!(commit.tree())?),
+                    Some(&mut diff_opts)
+                ))?,
+            };
+            match diff.stats() {
+                Ok(s) => (s.insertions() as i32, s.deletions() as i32),
+                Err(_) => (0, 0),
+            }
         };
-        let (ahead_remote, _) = if let Some(remote_oid) = remote_oid {
-            swl!(repo.graph_ahead_behind(oid, remote_oid))?
-        } else {
-            (0, 0)
-        };
-        let unpulled = ahead_local > 0;
-        let unpushed = ahead_remote > 0;
 
-        // END OF SLOWER SECTION
+        let unpulled = unpulled_oids.contains(&oid);
+        let unpushed = unpushed_oids.contains(&oid);
+
+        let tags = tag_map.get(&oid).cloned().unwrap_or_default();
 
         commits.push(Commit {
             timestamp: time,
@@ -1358,6 +1598,7 @@ pub async fn get_recent_commits(
             deletions,
             unpushed,
             unpulled,
+            tags,
         });
     }
 
@@ -1509,7 +1750,9 @@ pub async fn update_submodules(
         "Getting local directory".to_string(),
     );
 
-    tokio::task::block_in_place(|| update_submodules_priv(&repo, &provider, &credentials, &log_callback))
+    tokio::task::block_in_place(|| {
+        update_submodules_priv(&repo, &provider, &credentials, &log_callback)
+    })
 }
 
 fn update_submodules_priv(
@@ -1576,6 +1819,49 @@ pub async fn fetch_remote(
     fetch_remote_priv(&repo, &remote, &provider, &credentials, &log_callback)
 }
 
+fn configure_network_timeouts(repo: &Repository) {
+    if let Ok(mut config) = repo.config() {
+        let _ = config.set_i32("http.lowSpeedLimit", 1000); // 1 KB/s minimum
+        let _ = config.set_i32("http.lowSpeedTime", 30); // for 30 consecutive seconds
+    }
+}
+
+struct StallDetector {
+    last_bytes: AtomicU64,
+    last_progress_time: Mutex<Instant>,
+    stall_timeout_secs: u64,
+    stalled: AtomicBool,
+}
+
+impl StallDetector {
+    fn new(stall_timeout_secs: u64) -> Self {
+        Self {
+            last_bytes: AtomicU64::new(0),
+            last_progress_time: Mutex::new(Instant::now()),
+            stall_timeout_secs,
+            stalled: AtomicBool::new(false),
+        }
+    }
+
+    fn check(&self, received_bytes: u64) -> bool {
+        let prev = self.last_bytes.swap(received_bytes, Ordering::Relaxed);
+        if received_bytes > prev {
+            *self.last_progress_time.lock().unwrap() = Instant::now();
+            return true;
+        }
+        let elapsed = self.last_progress_time.lock().unwrap().elapsed().as_secs();
+        if elapsed >= self.stall_timeout_secs {
+            self.stalled.store(true, Ordering::Relaxed);
+            return false; // abort
+        }
+        true
+    }
+
+    fn was_stalled(&self) -> bool {
+        self.stalled.load(Ordering::Relaxed)
+    }
+}
+
 fn fetch_remote_priv(
     repo: &Repository,
     remote: &String,
@@ -1584,8 +1870,14 @@ fn fetch_remote_priv(
     log_callback: &Arc<impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static>,
 ) -> Result<Option<bool>, git2::Error> {
     let mut remote = swl!(repo.find_remote(&remote))?;
+    configure_network_timeouts(repo);
 
-    let callbacks = get_default_callbacks(Some(&provider), Some(&credentials));
+    let stall_detector = Arc::new(StallDetector::new(30));
+    let sd = Arc::clone(&stall_detector);
+
+    let mut callbacks = get_default_callbacks(Some(&provider), Some(&credentials));
+    callbacks.transfer_progress(move |stats| sd.check(stats.received_bytes() as u64));
+
     let mut fetch_options = FetchOptions::new();
     fetch_options.prune(git2::FetchPrune::On);
     fetch_options.update_fetchhead(true);
@@ -1597,8 +1889,18 @@ fn fetch_remote_priv(
         LogType::PullFromRepo,
         "Fetching changes".to_string(),
     );
-    swl!(remote.fetch::<&str>(&[], Some(&mut fetch_options), None))?;
-    return Ok(Some(true));
+    match remote.fetch::<&str>(&[], Some(&mut fetch_options), None) {
+        Ok(_) => Ok(Some(true)),
+        Err(e) => {
+            if stall_detector.was_stalled() {
+                Err(git2::Error::from_str(
+                    "network stall detected: transfer stalled",
+                ))
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
 pub async fn pull_changes(
@@ -1624,14 +1926,16 @@ pub async fn pull_changes(
         "Getting local directory".to_string(),
     );
 
-    tokio::task::block_in_place(|| pull_changes_priv(
-        &repo,
-        &provider,
-        &credentials,
-        commit_signing_credentials,
-        sync_callback,
-        &log_callback,
-    ))
+    tokio::task::block_in_place(|| {
+        pull_changes_priv(
+            &repo,
+            &provider,
+            &credentials,
+            commit_signing_credentials,
+            sync_callback,
+            &log_callback,
+        )
+    })
 }
 
 fn pull_changes_priv(
@@ -1824,14 +2128,16 @@ pub async fn download_changes(
         &log_callback
     ))?;
 
-    if tokio::task::block_in_place(|| pull_changes_priv(
-        &repo,
-        &provider,
-        &credentials,
-        commit_signing_credentials,
-        sync_callback,
-        &log_callback,
-    )) == Ok(Some(false))
+    if tokio::task::block_in_place(|| {
+        pull_changes_priv(
+            &repo,
+            &provider,
+            &credentials,
+            commit_signing_credentials,
+            sync_callback,
+            &log_callback,
+        )
+    }) == Ok(Some(false))
     {
         return Ok(Some(false));
     }
@@ -1881,6 +2187,7 @@ fn push_changes_priv(
     log_callback: &Arc<impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static>,
 ) -> Result<Option<bool>, git2::Error> {
     let mut remote = swl!(repo.find_remote(&remote_name))?;
+    configure_network_timeouts(repo);
     let push_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     let mut callbacks = get_default_callbacks(Some(&provider), Some(&credentials));
@@ -2169,6 +2476,10 @@ pub async fn unstage_file_paths(
     paths: Vec<String>,
     log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
 ) -> Result<(), git2::Error> {
+    if paths.is_empty() {
+        return Ok(());
+    }
+
     let log_callback = Arc::new(log);
 
     _log(
@@ -2252,9 +2563,7 @@ pub async fn get_recommended_action(
         remote.disconnect().unwrap();
     }
 
-    if !get_staged_file_paths_priv(&repo, &log_callback).is_empty()
-        || !get_uncommitted_file_paths_priv(&repo, false, &log_callback).is_empty()
-    {
+    if has_local_changes_priv(&repo, &log_callback) {
         _log(
             Arc::clone(&log_callback),
             LogType::RecommendedAction,
@@ -2300,7 +2609,7 @@ pub async fn get_recommended_action(
         }
     }
 
-    Ok(None)
+    Ok(Some(-1))
 }
 
 pub async fn commit_changes(
@@ -2407,10 +2716,12 @@ pub async fn upload_changes(
 
     let mut index = swl!(repo.index())?;
 
-    // Store the initial index state to compare later
     let has_conflicts = index.has_conflicts();
     let initial_tree_oid = if !has_conflicts {
-        Some(swl!(index.write_tree())?)
+        match swl!(index.write_tree()) {
+            Ok(oid) => Some(oid),
+            Err(_) => None,
+        }
     } else {
         None
     };
@@ -2636,6 +2947,7 @@ pub async fn force_push(
         "Getting local directory".to_string(),
     );
     let repo = swl!(Repository::open(&path_string))?;
+    configure_network_timeouts(&repo);
 
     let mut remote = swl!(repo.find_remote(&remote_name))?;
     let push_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -2765,6 +3077,7 @@ pub async fn upload_and_overwrite(
         "Getting local directory".to_string(),
     );
     let repo = swl!(Repository::open(&path_string))?;
+    configure_network_timeouts(&repo);
     set_author(&repo, &author);
 
     if repo.state() == RepositoryState::Merge
@@ -2944,6 +3257,7 @@ pub async fn download_and_overwrite(
     repo.cleanup_state().unwrap();
 
     let mut remote = swl!(repo.find_remote(&remote_name))?;
+    configure_network_timeouts(&repo);
 
     let callbacks = get_default_callbacks(Some(&provider), Some(&credentials));
     let mut fetch_options = FetchOptions::new();
@@ -3084,7 +3398,7 @@ pub async fn discard_changes(
 pub async fn get_conflicting(
     path_string: &String,
     log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
-) -> Vec<String> {
+) -> Vec<(String, ConflictType)> {
     let log_callback = Arc::new(log);
 
     _log(
@@ -3103,10 +3417,16 @@ pub async fn get_conflicting(
     index.conflicts().unwrap().for_each(|conflict| {
         if let Ok(conflict) = conflict {
             if let Some(ours) = conflict.our {
-                conflicts.push(String::from_utf8_lossy(&ours.path).to_string());
+                conflicts.push((
+                    String::from_utf8_lossy(&ours.path).to_string(),
+                    ConflictType::Text,
+                ));
             }
             if let Some(theirs) = conflict.their {
-                conflicts.push(String::from_utf8_lossy(&theirs.path).to_string());
+                conflicts.push((
+                    String::from_utf8_lossy(&theirs.path).to_string(),
+                    ConflictType::Text,
+                ));
             }
         }
     });
@@ -3222,6 +3542,7 @@ fn get_uncommitted_file_paths_priv(
     opts.include_untracked(include_untracked);
     opts.include_ignored(false);
     opts.update_index(true);
+    opts.show(git2::StatusShow::Workdir);
     let statuses = repo.statuses(Some(&mut opts)).unwrap();
 
     let mut file_paths = Vec::new();
@@ -3267,6 +3588,56 @@ fn get_uncommitted_file_paths_priv(
     }
 
     file_paths
+}
+
+fn has_local_changes_priv(
+    repo: &Repository,
+    log_callback: &Arc<impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static>,
+) -> bool {
+    _log(
+        Arc::clone(&log_callback),
+        LogType::RecommendedAction,
+        "Checking for local changes".to_string(),
+    );
+
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true);
+    opts.include_ignored(false);
+    opts.update_index(true);
+    let statuses = match repo.statuses(Some(&mut opts)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let index_flags = Status::INDEX_NEW | Status::INDEX_MODIFIED | Status::INDEX_DELETED;
+    let wt_flags = Status::WT_NEW | Status::WT_MODIFIED | Status::WT_DELETED;
+    let relevant_flags = index_flags | wt_flags;
+
+    for entry in statuses.iter() {
+        let path = entry.path().unwrap_or_default();
+
+        if path.ends_with('/') && repo.find_submodule(&path[..path.len() - 1]).is_ok() {
+            continue;
+        }
+
+        if let Ok(mut submodule) = repo.find_submodule(path) {
+            submodule.reload(true).ok();
+            let head_oid = submodule.head_id();
+            let index_oid = submodule.index_id();
+            let workdir_oid = submodule.workdir_id();
+
+            if head_oid != index_oid || head_oid != workdir_oid {
+                return true;
+            }
+            continue;
+        }
+
+        if entry.status().intersects(relevant_flags) {
+            return true;
+        }
+    }
+
+    false
 }
 
 pub async fn abort_merge(
@@ -3453,6 +3824,96 @@ pub async fn set_remote_url(
     Ok(())
 }
 
+pub async fn list_remotes(
+    path_string: &String,
+    log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
+) -> Vec<String> {
+    let log_callback = Arc::new(log);
+
+    _log(
+        Arc::clone(&log_callback),
+        LogType::ListRemotes,
+        "Listing remotes".to_string(),
+    );
+    let repo = Repository::open(Path::new(path_string)).unwrap();
+    let remotes = repo.remotes().unwrap();
+    remotes
+        .iter()
+        .filter_map(|r| r.map(|s| s.to_string()))
+        .collect()
+}
+
+pub async fn init_repository(
+    path_string: &String,
+    log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
+) -> Result<(), git2::Error> {
+    let log_callback = Arc::new(log);
+
+    _log(
+        Arc::clone(&log_callback),
+        LogType::InitRepo,
+        "Initialising repository".to_string(),
+    );
+    Repository::init(Path::new(path_string))?;
+    Ok(())
+}
+
+pub async fn add_remote(
+    path_string: &String,
+    remote_name: &String,
+    remote_url: &String,
+    log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
+) -> Result<(), git2::Error> {
+    let log_callback = Arc::new(log);
+
+    _log(
+        Arc::clone(&log_callback),
+        LogType::AddRemote,
+        "Adding remote".to_string(),
+    );
+    let repo = Repository::open(Path::new(path_string)).unwrap();
+    repo.remote(&remote_name, &remote_url)?;
+
+    Ok(())
+}
+
+pub async fn delete_remote(
+    path_string: &String,
+    remote_name: &String,
+    log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
+) -> Result<(), git2::Error> {
+    let log_callback = Arc::new(log);
+
+    _log(
+        Arc::clone(&log_callback),
+        LogType::DeleteRemote,
+        "Deleting remote".to_string(),
+    );
+    let repo = Repository::open(Path::new(path_string)).unwrap();
+    repo.remote_delete(&remote_name)?;
+
+    Ok(())
+}
+
+pub async fn rename_remote(
+    path_string: &String,
+    old_name: &String,
+    new_name: &String,
+    log: impl Fn(LogType, String) -> DartFnFuture<()> + Send + Sync + 'static,
+) -> Result<(), git2::Error> {
+    let log_callback = Arc::new(log);
+
+    _log(
+        Arc::clone(&log_callback),
+        LogType::RenameRemote,
+        "Renaming remote".to_string(),
+    );
+    let repo = Repository::open(Path::new(path_string)).unwrap();
+    let _problematic_refspecs = repo.remote_rename(&old_name, &new_name)?;
+
+    Ok(())
+}
+
 pub async fn checkout_branch(
     path_string: &String,
     remote: &String,
@@ -3492,9 +3953,7 @@ pub async fn checkout_branch(
     let mut checkout_builder = git2::build::CheckoutBuilder::new();
     checkout_builder.force();
 
-    tokio::task::block_in_place(|| {
-        swl!(repo.checkout_tree(&object, Some(&mut checkout_builder)))
-    })?;
+    tokio::task::block_in_place(|| swl!(repo.checkout_tree(&object, Some(&mut checkout_builder))))?;
 
     let refname = format!("refs/heads/{}", branch_name);
     swl!(repo.set_head(&refname))?;
@@ -3543,6 +4002,7 @@ pub async fn create_branch(
     );
 
     let repo = swl!(Repository::open(Path::new(path_string)))?;
+    configure_network_timeouts(&repo);
 
     let current_branch = get_branch_name_priv(&repo);
 
@@ -3578,9 +4038,7 @@ pub async fn create_branch(
     let mut checkout_builder = git2::build::CheckoutBuilder::new();
     checkout_builder.force();
 
-    tokio::task::block_in_place(|| {
-        swl!(repo.checkout_tree(&object, Some(&mut checkout_builder)))
-    })?;
+    tokio::task::block_in_place(|| swl!(repo.checkout_tree(&object, Some(&mut checkout_builder))))?;
 
     let refname = format!("refs/heads/{}", new_branch_name);
     swl!(repo.set_head(&refname))?;
@@ -3662,6 +4120,73 @@ pub async fn create_branch(
             new_branch_name, upstream_name
         ),
     );
+
+    Ok(())
+}
+
+pub async fn prune_corrupted_loose_objects(path_string: String) -> Result<(), git2::Error> {
+    let repo = swl!(Repository::open(&path_string))?;
+    let odb = swl!(repo.odb())?;
+    let objects_dir = Path::new(&path_string).join(".git").join("objects");
+    let mut pruned = 0u32;
+
+    if !objects_dir.is_dir() {
+        return Ok(());
+    }
+
+    let entries = match fs::read_dir(&objects_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    for dir_entry in entries.flatten() {
+        let dir_name = dir_entry.file_name();
+        let dir_name_str = match dir_name.to_str() {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Only look at 2-char hex prefix directories
+        if dir_name_str.len() != 2 || !dir_name_str.chars().all(|c| c.is_ascii_hexdigit()) {
+            continue;
+        }
+
+        let sub_entries = match fs::read_dir(dir_entry.path()) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        for file_entry in sub_entries.flatten() {
+            let file_name = file_entry.file_name();
+            let file_name_str = match file_name.to_str() {
+                Some(s) => s,
+                None => continue,
+            };
+
+            // Loose object filenames are 38 hex chars
+            if file_name_str.len() != 38 || !file_name_str.chars().all(|c| c.is_ascii_hexdigit()) {
+                continue;
+            }
+
+            let hex = format!("{}{}", dir_name_str, file_name_str);
+            let oid = match git2::Oid::from_str(&hex) {
+                Ok(o) => o,
+                Err(_) => continue,
+            };
+
+            if let Err(e) = odb.read_header(oid) {
+                let msg = e.message().to_lowercase();
+                if msg.contains("failed to parse loose object") {
+                    let _ = fs::remove_file(file_entry.path());
+                    pruned += 1;
+                }
+            }
+        }
+    }
+
+    if pruned > 0 {
+        let _ = odb.refresh();
+    }
 
     Ok(())
 }

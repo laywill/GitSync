@@ -4,23 +4,32 @@ import '../../../constant/dimens.dart';
 import '../../../ui/dialog/base_alert_dialog.dart';
 import 'package:GitSync/global.dart';
 
-Future<void> showDialog(BuildContext context, Future<void> Function() successCallback, Future<void> Function() callback) {
+Future<void> showDialog(
+  BuildContext context,
+  VoidCallback onConfirm,
+) async {
   return mat.showDialog(
     context: context,
     builder: (BuildContext context) => BaseAlertDialog(
       title: SizedBox(
         width: MediaQuery.of(context).size.width,
         child: Text(
-          t.authorDetailsPromptTitle,
+          t.createNewRepository,
           style: TextStyle(color: colours.primaryLight, fontSize: textXL, fontWeight: FontWeight.bold),
         ),
       ),
       content: SingleChildScrollView(
         child: ListBody(
           children: [
+            SizedBox(height: spaceMD),
             Text(
-              t.authorDetailsPromptMessage,
-              style: TextStyle(color: colours.primaryLight, fontWeight: FontWeight.bold, fontSize: textSM),
+              t.noGitRepoFoundMsg,
+              style: TextStyle(color: colours.primaryLight, fontSize: textMD),
+            ),
+            SizedBox(height: spaceMD),
+            Text(
+              t.remoteSetupLaterMsg,
+              style: TextStyle(color: colours.tertiaryLight, fontSize: textSM),
             ),
           ],
         ),
@@ -28,23 +37,22 @@ Future<void> showDialog(BuildContext context, Future<void> Function() successCal
       actions: <Widget>[
         TextButton(
           child: Text(
-            t.dismiss.toUpperCase(),
+            t.cancel.toUpperCase(),
             style: TextStyle(color: colours.primaryLight, fontSize: textMD),
           ),
-          onPressed: () async {
+          onPressed: () {
             Navigator.of(context).canPop() ? Navigator.pop(context) : null;
-            await callback();
           },
         ),
         TextButton(
+          onPressed: () {
+            Navigator.of(context).canPop() ? Navigator.pop(context) : null;
+            onConfirm();
+          },
           child: Text(
-            t.goToSettings.toUpperCase(),
+            t.create.toUpperCase(),
             style: TextStyle(color: colours.primaryPositive, fontSize: textMD),
           ),
-          onPressed: () async {
-            Navigator.of(context).canPop() ? Navigator.pop(context) : null;
-            await successCallback();
-          },
         ),
       ],
     ),

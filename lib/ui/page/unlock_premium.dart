@@ -36,7 +36,8 @@ class UnlockPremium extends StatefulWidget {
 class _UnlockPremiumState extends State<UnlockPremium> {
   final pageController = PageController();
   int currentPage = 0;
-  final price = "\$15.00";
+  bool _restoringPurchase = false;
+  final price = "\$20.00";
 
   Widget _featureRow(IconData icon, String text) {
     return Padding(
@@ -299,7 +300,12 @@ class _UnlockPremiumState extends State<UnlockPremium> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: EdgeInsets.only(left: spaceXL, right: Platform.isIOS ? spaceXL - spaceSM : spaceXL, top: Platform.isIOS ? spaceXL - spaceSM : spaceXL, bottom: 0),
+                padding: EdgeInsets.only(
+                  left: spaceXL,
+                  right: Platform.isIOS ? spaceXL - spaceSM : spaceXL,
+                  top: Platform.isIOS ? spaceXL - spaceSM : spaceXL,
+                  bottom: 0,
+                ),
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -314,8 +320,11 @@ class _UnlockPremiumState extends State<UnlockPremium> {
                             decoration: BoxDecoration(
                               border: BoxBorder.all(width: spaceXXXS, color: colours.premiumAccent, strokeAlign: BorderSide.strokeAlignOutside),
                               shape: BoxShape.circle,
-                              color: Colors.white,
-                              image: DecorationImage(fit: BoxFit.fill, image: AssetImage('assets/app_icon.png')),
+                              image: DecorationImage(
+                                fit: BoxFit.fill,
+                                image: AssetImage('assets/app_icon.png'),
+                                colorFilter: ColorFilter.mode(colours.primaryLight, BlendMode.srcATop),
+                              ),
                             ),
                           ),
                           SizedBox(height: spaceLG),
@@ -380,7 +389,7 @@ class _UnlockPremiumState extends State<UnlockPremium> {
                                 children: List.generate(cards.length, (index) {
                                   final isActive = currentPage == index;
                                   return AnimatedContainer(
-                                    duration: Duration(milliseconds: 200),
+                                    duration: animFast,
                                     margin: EdgeInsets.symmetric(horizontal: spaceXXXS),
                                     width: spaceXS,
                                     height: spaceXS,
@@ -436,13 +445,30 @@ class _UnlockPremiumState extends State<UnlockPremium> {
                                               ),
                                             ),
                                           ),
-                                          child: Text(
-                                            t.restorePurchase.toUpperCase(),
-                                            style: TextStyle(color: colours.premiumTextSecondary, fontWeight: FontWeight.bold, fontSize: textMD),
-                                          ),
-                                          onPressed: () async {
-                                            await _verifyGhSponsor();
-                                          },
+                                          child: _restoringPurchase
+                                              ? SizedBox(
+                                                  height: textMD,
+                                                  width: textMD,
+                                                  child: CircularProgressIndicator(color: colours.premiumTextSecondary, strokeWidth: spaceXXXS),
+                                                )
+                                              : Text(
+                                                  t.restorePurchase.toUpperCase(),
+                                                  style: TextStyle(
+                                                    color: colours.premiumTextSecondary,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: textMD,
+                                                  ),
+                                                ),
+                                          onPressed: _restoringPurchase
+                                              ? null
+                                              : () async {
+                                                  setState(() => _restoringPurchase = true);
+                                                  try {
+                                                    await _verifyGhSponsor();
+                                                  } finally {
+                                                    if (mounted) setState(() => _restoringPurchase = false);
+                                                  }
+                                                },
                                         ),
                                       ),
                                       // Positioned(

@@ -32,6 +32,7 @@ import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -95,11 +96,11 @@ class ManualSyncWidget : GlanceAppWidget() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                modifier = GlanceModifier.padding(end = if (showShortText) 16.dp else 0.dp),
-                contentAlignment = Alignment.Center,
+                modifier = GlanceModifier.size(48.dp).padding(end = if (showShortText) 16.dp else 0.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Image(
-                    provider = ImageProvider(R.drawable.manual_sync_small),
+                    provider = ImageProvider(R.drawable.manual_sync),
                     contentDescription = "Force Sync",
                     colorFilter = ColorFilter.tint(ColorProvider(Color.White)),
                     contentScale = ContentScale.Fit,

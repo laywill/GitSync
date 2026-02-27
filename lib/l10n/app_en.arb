@@ -18,6 +18,9 @@
     "next": "Next",
     "finish": "Finish",
     "rename": "Rename",
+    "renameDescription": "Rename the selected file or folder",
+    "selectAllDescription": "Select all visible files and folders",
+    "deselectAllDescription": "Deselect all selected files and folders",
     "add": "Add",
     "delete": "Delete",
     "optionalLabel": "(optional)",
@@ -365,8 +368,10 @@
     "remoteLabel": "default remote",
     "defaultRemote": "origin",
     "authorNameLabel": "author name",
+    "authorNameDescription": "used to identify you in commit history",
     "authorName": "JohnSmith12",
     "authorEmailLabel": "author email",
+    "authorEmailDescription": "attached to your commits for attribution",
     "authorEmail": "john12@smith.com",
     "gitIgnore": ".gitignore",
     "gitIgnoreDescription": "list files or folders to ignore on all devices",
@@ -490,6 +495,14 @@
     "submodulesFoundAction": "Add Submodules",
 
 
+    "@@x-REMOTE_MANAGEMENT": "",
+    "addRemote": "Add Remote",
+    "deleteRemote": "Delete Remote",
+    "renameRemote": "Rename Remote",
+    "remoteName": "Remote Name",
+    "confirmDeleteRemote": "Are you sure you want to delete the remote \"%s\"?",
+
+
     "@@x-BRANCH_MANAGEMENT": "",
     "confirmBranchCheckoutTitle": "Checkout Branch?",
     "confirmBranchCheckoutMsgPart1": "Are you sure you want to checkout the branch ",
@@ -511,7 +524,9 @@
     "unsupportedGitAttributes": "This repo uses git features only available in store versions.",
     "tapToOpenPlayStore": "Tap to update.",
     "ongoingMergeConflict": "Ongoing merge conflict",
+    "networkStallRetry": "Poor network — will retry shortly",
     "networkUnavailableRetry": "Network unavailable!\nGitSync will retry when reconnected",
+    "failedToResolveAddressMessage": "Could not reach the server. Check your internet connection or verify the repository URL is correct.",
     "pullFailed": "Pull failed! Please check for uncommitted changes and try again.",
     "reportABug": "Report a Bug",
     "errorOccurredTitle": "An Error Occurred!",
@@ -543,5 +558,10 @@
     "report": "Report",
     "issueReportSuccessTitle": "Issue Reported Successfully",
     "issueReportSuccessMsg": "Your issue has been reported. Bookmark this page to track progress and respond to messages. \n\nPlease avoid creating duplicate issues, as that makes resolution harder. \n\nIssues with no activity for 7 days are automatically closed.",
-    "trackIssue": "Track Issue & Respond to Messages"
+    "trackIssue": "Track Issue & Respond to Messages",
+    "createNewRepository": "Create New Repository",
+    "noGitRepoFoundMsg": "No git repository was found in the selected folder. Would you like to create a new one here?",
+    "remoteSetupLaterMsg": "You can set up a remote later to sync with a server.",
+    "localOnlyNoRemote": "Local only — add a remote to sync",
+    "noRemoteConfigured": "No remote configured"
 }

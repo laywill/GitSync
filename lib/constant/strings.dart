@@ -41,15 +41,18 @@ const String androidInvalidCharacterInFilenamePrefix = "could not open";
 const String androidInvalidCharacterInFilenameSuffix = "for writing: Operation not permitted";
 const String emptyNameOrEmail = "Signature cannot have an empty name or email";
 const String errorReadingZlibStream = "error reading from the zlib stream";
+const String failedToResolveAddress = "failed to resolve address";
 const String theIndexIsLocked = "the index is locked";
 const String corruptedLooseFetchHead = "corrupted loose reference file: FETCH_HEAD";
+const String corruptedLooseObject = "failed to parse loose object";
+const String corruptedLooseObjectError = "Corrupted repository data detected. Use Auto-Fix to repair.";
 const String missingAuthorDetailsError = "Missing repository author details. Please set your name and email in the repository settings.";
 const String authMethodMismatchError = "Authentication method mismatch. Use %s credentials with this repository instead.";
 const String outOfMemory = "Application ran out of memory!";
 const String invalidRemote = "Invalid remote! Modify this in settings";
 const String largeFile = "Singular files larger than 50MB not supported!";
 const String directoryNotEmpty = "Folder not empty. Please choose another.";
-const String inaccessibleDirectoryMessage = "Inaccessible directory! Please select a different location.";
+const String inaccessibleDirectoryMessage = "This folder is inaccessible. Try creating a new folder in the same location with a different name and selecting that instead.";
 const String autoRebaseFailedException =
     "Remote is further ahead than local and we could not automatically rebase for you, as it would cause non fast-forward update.";
 const String nonExistingException = "Remote ref didn't exist.";
@@ -83,13 +86,13 @@ const String concurrentRepositoryAccessLink = "https://gitsync.viscouspotenti.al
 const String privacyPolicyLink = "https://gitsync.viscouspotenti.al/wiki/privacy-policy/";
 const String eulaLink = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
 const String discordLink = "https://discord.gg/cgvjdDyzzB";
-const String multiRepoDocsLink = "https://gitsync.viscouspotenti.al/wiki/multi-repo-support";
+const String premiumDocsLink = "https://gitsync.viscouspotenti.al/wiki/premium";
 const String scheduledSyncDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options/background/scheduled-sync";
 const String autoSyncDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options/background/app-based";
 const String tileSyncDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options/background/quick-tile";
 const String quickSyncDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options/background/quick-sync";
 const String enhancedShcheduledSyncDocsLink =
-    "https://gitsync.viscouspotenti.al/wiki/sync-options/background/scheduled#enhanced-scheduled-sync-ios-only";
+    "https://gitsync.viscouspotenti.al/wiki/sync-options/background/scheduled-sync#enhanced-scheduled-sync-ios-only";
 const String repositorySettingsDocsLink = "https://gitsync.viscouspotenti.al/wiki/repository-settings";
 const String syncOptionsDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options";
 const String syncOptionsBGDocsLink = "https://gitsync.viscouspotenti.al/wiki/sync-options/background";

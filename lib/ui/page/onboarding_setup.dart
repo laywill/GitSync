@@ -183,7 +183,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
     ..forward();
   late final Animation<double> _curvedAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut, reverseCurve: Curves.easeIn);
 
-  late final AnimationController _wiggleController = AnimationController(vsync: this, duration: Duration(milliseconds: 400))..repeat(reverse: true);
+  late final AnimationController _wiggleController = AnimationController(vsync: this, duration: animMedium)..repeat(reverse: true);
   late final Animation<double> _wiggleAnimation = Tween<double>(
     begin: -10 * math.pi / 180,
     end: 10 * math.pi / 180,
@@ -241,6 +241,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
   @override
   void initState() {
     super.initState();
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
     if (widget.legacy) {
       screenIndex.value = Screen.LegacyAppUser;
     } else {
@@ -254,7 +255,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
         clientModeEnabled.value = await uiSettingsManager.getBoolNullable(StorageKey.setman_clientModeEnabled, true) ?? false;
         clientSyncModeScrollController.animateTo(
           clientModeEnabled.value ? 0 : clientSyncModeScrollController.position.maxScrollExtent,
-          duration: Duration(milliseconds: 200),
+          duration: animFast,
           curve: Curves.easeInOut,
         );
       }
@@ -275,6 +276,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
 
   @override
   void dispose() {
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _controller.dispose();
     _wiggleController.dispose();
     _syncSettingsPage.dispose();
@@ -314,14 +316,14 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
       case Screen.EnableNotifications:
         _controller.reverse().then((_) {
           if (!mounted) return;
-          screenIndex.value = Screen.BrowseAndEdit;
+          screenIndex.value = hasSkipped ? Screen.ClientSyncMode : Screen.BrowseAndEdit;
           _isBackNavigating = false;
         });
 
       case Screen.EnableAllFilesAccess:
         _controller.reverse().then((_) {
           if (!mounted) return;
-          screenIndex.value = _notificationsScreenWasShown ? Screen.EnableNotifications : Screen.BrowseAndEdit;
+          screenIndex.value = _notificationsScreenWasShown ? Screen.EnableNotifications : (hasSkipped ? Screen.ClientSyncMode : Screen.BrowseAndEdit);
           _isBackNavigating = false;
         });
 
@@ -454,6 +456,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                         fontSize: textMD * 2,
                         fontFamily: "AtkinsonHyperlegible",
                         fontWeight: FontWeight.bold,
+                        shadows: [Shadow(blurRadius: 10.0, color: colours.primaryDark, offset: Offset.zero)],
                       ),
                     ),
                   ),
@@ -568,7 +571,10 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
 
   Future<void> showAlmostThereOrSkip() async {
     await repoManager.setOnboardingStep(1);
-    if (hasSkipped) return;
+    if (hasSkipped) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     await _controller.reverse();
     screenIndex.value = Screen.AlmostThere;
   }
@@ -689,13 +695,13 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                   ValueListenableBuilder(
                     valueListenable: animationValue,
                     builder: (context, animation, child) => AnimatedPositioned(
-                      duration: Duration(milliseconds: 500),
+                      duration: animSlow,
                       curve: Curves.easeInOut,
                       top: -spaceXL * 1.5 * animation,
                       left: spaceXL * 2,
                       right: spaceXL * 2,
                       child: AnimatedOpacity(
-                        duration: Duration(milliseconds: 500),
+                        duration: animSlow,
                         curve: Curves.easeInOut,
                         opacity: 1 * animation,
                         child: Container(
@@ -952,7 +958,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                         clientModeEnabled.value = true;
                                         clientSyncModeScrollController.animateTo(
                                           clientModeEnabled.value ? 0 : clientSyncModeScrollController.position.maxScrollExtent,
-                                          duration: Duration(milliseconds: 200),
+                                          duration: animFast,
                                           curve: Curves.easeInOut,
                                         );
                                         await uiSettingsManager.setBoolNullable(StorageKey.setman_clientModeEnabled, true);
@@ -963,7 +969,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                           crossAxisAlignment: CrossAxisAlignment.end,
                                           children: [
                                             AnimatedContainer(
-                                              duration: Duration(milliseconds: 200),
+                                              duration: animFast,
                                               padding: EdgeInsets.only(left: spaceSM, right: spaceSM, bottom: spaceXXXS, top: spaceXS),
                                               decoration: BoxDecoration(
                                                 color: isClientMode ? colours.tertiaryDark : Colors.transparent,
@@ -978,7 +984,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   AnimatedDefaultTextStyle(
-                                                    duration: Duration(milliseconds: 200),
+                                                    duration: animFast,
                                                     style: TextStyle(
                                                       color: isClientMode ? colours.tertiaryInfo : colours.primaryLight,
                                                       fontWeight: FontWeight.bold,
@@ -997,7 +1003,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                               ),
                                             ),
                                             AnimatedContainer(
-                                              duration: Duration(milliseconds: 200),
+                                              duration: animFast,
                                               padding: EdgeInsets.only(left: spaceSM, right: spaceSM, top: spaceXS, bottom: spaceSM),
                                               decoration: BoxDecoration(
                                                 color: isClientMode ? colours.tertiaryDark : Colors.transparent,
@@ -1009,7 +1015,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                                 ),
                                               ),
                                               child: AnimatedDefaultTextStyle(
-                                                duration: Duration(milliseconds: 200),
+                                                duration: animFast,
                                                 style: TextStyle(
                                                   color: isClientMode ? colours.primaryLight : colours.secondaryLight,
                                                   fontWeight: FontWeight.bold,
@@ -1040,7 +1046,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                         clientModeEnabled.value = false;
                                         clientSyncModeScrollController.animateTo(
                                           clientModeEnabled.value ? 0 : clientSyncModeScrollController.position.maxScrollExtent,
-                                          duration: Duration(milliseconds: 200),
+                                          duration: animFast,
                                           curve: Curves.easeInOut,
                                         );
                                         await uiSettingsManager.setBoolNullable(StorageKey.setman_clientModeEnabled, false);
@@ -1051,7 +1057,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             AnimatedContainer(
-                                              duration: Duration(milliseconds: 200),
+                                              duration: animFast,
                                               padding: EdgeInsets.only(left: spaceSM, right: spaceSM, bottom: spaceXXXS, top: spaceXS),
                                               decoration: BoxDecoration(
                                                 color: !isClientMode ? colours.tertiaryDark : Colors.transparent,
@@ -1072,7 +1078,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                                   ),
                                                   SizedBox(width: spaceSM),
                                                   AnimatedDefaultTextStyle(
-                                                    duration: Duration(milliseconds: 200),
+                                                    duration: animFast,
                                                     style: TextStyle(
                                                       color: !isClientMode ? colours.tertiaryInfo : colours.primaryLight,
                                                       fontWeight: FontWeight.bold,
@@ -1085,7 +1091,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                               ),
                                             ),
                                             AnimatedContainer(
-                                              duration: Duration(milliseconds: 200),
+                                              duration: animFast,
                                               padding: EdgeInsets.only(left: spaceSM, right: spaceSM, top: spaceXS, bottom: spaceSM),
                                               decoration: BoxDecoration(
                                                 color: !isClientMode ? colours.tertiaryDark : Colors.transparent,
@@ -1097,7 +1103,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                                 ),
                                               ),
                                               child: AnimatedDefaultTextStyle(
-                                                duration: Duration(milliseconds: 200),
+                                                duration: animFast,
                                                 style: TextStyle(
                                                   color: !isClientMode ? colours.primaryLight : colours.secondaryLight,
                                                   fontWeight: FontWeight.bold,
@@ -1192,7 +1198,11 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                             ),
                             onPressed: () async {
                               await _controller.reverse();
-                              screenIndex.value = Screen.BrowseAndEdit;
+                              if (hasSkipped) {
+                                await showNotificationsOrNext();
+                              } else {
+                                screenIndex.value = Screen.BrowseAndEdit;
+                              }
                             },
                           ),
                         ),
@@ -1534,7 +1544,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
 
   Widget _modeFeatureItem(IconData icon, String text, bool isSelected, [bool right = false, bool last = false]) {
     return AnimatedContainer(
-      duration: Duration(milliseconds: 200),
+      duration: animFast,
       padding: EdgeInsets.only(left: spaceSM, right: spaceSM, top: spaceXS, bottom: spaceXS),
       decoration: BoxDecoration(
         color: isSelected ? colours.tertiaryDark : Colors.transparent,
@@ -1731,6 +1741,11 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                         ],
                       ),
                     ),
+                    SizedBox(height: spaceSM),
+                    Text(
+                      "All notifications are off by default.",
+                      style: TextStyle(color: colours.tertiaryLight, fontSize: textSM, fontFamily: "AtkinsonHyperlegible"),
+                    ),
                   ],
                 ),
               ),
@@ -1741,16 +1756,56 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                     builder: (context, child) {
                       return Transform.rotate(angle: _wiggleAnimation.value, child: child);
                     },
-                    child: GestureDetector(
-                      onTap: () async {
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      style: ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      constraints: BoxConstraints(),
+                      onPressed: () async {
                         if (await Permission.notification.request().isGranted) {
                           await showAllFilesAccessOrNext();
                         }
                       },
-                      child: FaIcon(FontAwesomeIcons.solidBell, color: colours.tertiaryPositive, size: spaceXXL),
+                      icon: FaIcon(
+                        semanticLabel: "tap to grant notifications",
+                        FontAwesomeIcons.solidBell,
+                        color: colours.tertiaryPositive,
+                        size: spaceXXL,
+                      ),
                     ),
                   ),
                 ),
+              ),
+              Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () async {
+                          await showAllFilesAccessOrNext();
+                        },
+                        style: ButtonStyle(
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: spaceXS)),
+                          backgroundColor: WidgetStatePropertyAll(colours.tertiaryInfo),
+                          shape: WidgetStatePropertyAll(
+                            RoundedRectangleBorder(borderRadius: BorderRadius.all(cornerRadiusMD), side: BorderSide.none),
+                          ),
+                        ),
+                        child: Text(
+                          t.skip.toUpperCase(),
+                          style: TextStyle(
+                            color: colours.primaryDark,
+                            fontWeight: FontWeight.bold,
+                            fontSize: textMD,
+                            fontFamily: "AtkinsonHyperlegible",
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: spaceLG),
+                ],
               ),
             ],
           ),
@@ -1884,13 +1939,21 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                     builder: (context, child) {
                       return Transform.rotate(angle: _wiggleAnimation.value, child: child);
                     },
-                    child: GestureDetector(
-                      onTap: () async {
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      style: ButtonStyle(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                      constraints: BoxConstraints(),
+                      onPressed: () async {
                         if (await requestStoragePerm()) {
                           await showAlmostThereOrSkip();
                         }
                       },
-                      child: FaIcon(FontAwesomeIcons.folderOpen, color: colours.tertiaryPositive, size: spaceXXL),
+                      icon: FaIcon(
+                        FontAwesomeIcons.folderOpen,
+                        semanticLabel: "tap to grant file access",
+                        color: colours.tertiaryPositive,
+                        size: spaceXXL,
+                      ),
                     ),
                   ),
                 ),
@@ -2312,7 +2375,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               AnimatedSize(
-                                duration: Duration(milliseconds: 400),
+                                duration: animMedium,
                                 curve: Curves.easeInOut,
                                 child: SizedBox(
                                   height: expanded == null ? null : 0,
@@ -2512,7 +2575,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                 ),
                               ),
                               AnimatedSize(
-                                duration: Duration(milliseconds: 400),
+                                duration: animMedium,
                                 curve: Curves.easeInOut,
                                 child: SizedBox(
                                   height: expanded == null || expanded == GitProvider.HTTPS ? null : 0,
@@ -2549,7 +2612,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                               ),
                               SizedBox(height: expanded == null ? spaceXXS : 0),
                               AnimatedSize(
-                                duration: Duration(milliseconds: 400),
+                                duration: animMedium,
                                 curve: Curves.easeInOut,
                                 child: SizedBox(
                                   height: expanded == null || expanded == GitProvider.SSH ? null : 0,
@@ -2619,7 +2682,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                   ],
                                 ),
                           // AnimatedSwitcher(
-                          //   duration: Duration(milliseconds: 400),
+                          //   duration: animMedium,
                           //   switchInCurve: Curves.easeOut,
                           //   switchOutCurve: Curves.easeIn,
                           //   transitionBuilder: (child, animation) {
@@ -2666,7 +2729,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                   Column(
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           SizedBox(
                             child: TextButton.icon(
@@ -2695,6 +2758,29 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                   fontSize: textMD,
                                   fontFamily: "AtkinsonHyperlegible",
                                 ),
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () async {
+                              await repoManager.setOnboardingStep(3);
+                              _showCloneRepoPage();
+                            },
+                            style: ButtonStyle(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: spaceXS)),
+                              backgroundColor: WidgetStatePropertyAll(colours.tertiaryInfo),
+                              shape: WidgetStatePropertyAll(
+                                RoundedRectangleBorder(borderRadius: BorderRadius.all(cornerRadiusMD), side: BorderSide.none),
+                              ),
+                            ),
+                            child: Text(
+                              t.skip.toUpperCase(),
+                              style: TextStyle(
+                                color: colours.primaryDark,
+                                fontWeight: FontWeight.bold,
+                                fontSize: textMD,
+                                fontFamily: "AtkinsonHyperlegible",
                               ),
                             ),
                           ),
@@ -2772,7 +2858,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                   child: Stack(
                     children: [
                       AnimatedCrossFade(
-                        duration: Duration(milliseconds: 200),
+                        duration: animFast,
                         crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
                         firstChild: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2805,7 +2891,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                         secondChild: SingleChildScrollView(reverse: title == t.scheduledSyncSettings, child: settingsBody),
                       ),
                       AnimatedPositioned(
-                        duration: Duration(milliseconds: 200),
+                        duration: animFast,
                         bottom: isExpanded ? -spaceXXL : 0,
                         left: 0,
                         right: 0,
@@ -3034,7 +3120,7 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
                                 children: List.generate(syncCards.length, (index) {
                                   final isActive = currentPage == index;
                                   return AnimatedContainer(
-                                    duration: Duration(milliseconds: 200),
+                                    duration: animFast,
                                     margin: EdgeInsets.symmetric(horizontal: spaceXXXS),
                                     width: spaceXS,
                                     height: spaceXS,
@@ -3164,18 +3250,18 @@ class _OnboardingSetup extends State<OnboardingSetup> with WidgetsBindingObserve
               child: Stack(
                 children: [
                   AnimatedPositioned(
-                    duration: Duration(milliseconds: 500),
+                    duration: animSlow,
                     curve: Curves.easeInOut,
                     top: spaceSM * 2 + spaceLG,
                     left: screenIndexValue == Screen.Welcome ? 1 : spaceMD * 2,
                     right: screenIndexValue == Screen.Welcome ? 1 : MediaQuery.of(context).size.width - spaceXXL - (spaceMD * 2),
                     child: Center(
                       child: AnimatedContainer(
-                        duration: Duration(milliseconds: 500),
+                        duration: animSlow,
                         curve: Curves.easeInOut,
                         width: screenIndexValue == Screen.Welcome ? spaceXXL * 2.5 : spaceXXL,
                         height: screenIndexValue == Screen.Welcome ? spaceXXL * 2.5 : spaceXXL,
-                        child: Image.asset('assets/app_icon.png', fit: BoxFit.cover),
+                        child: Image.asset('assets/app_icon.png', fit: BoxFit.cover, color: colours.darkMode ? null : colours.primaryLight),
                       ),
                     ),
                   ),

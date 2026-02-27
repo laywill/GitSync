@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:GitSync/api/accessibility_service_helper.dart';
 import 'package:GitSync/api/logger.dart';
 import 'package:GitSync/api/manager/git_manager.dart';
@@ -75,7 +76,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
 
     if (widget.onboarding) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await _controller.animateTo(_controller.position.maxScrollExtent / 2, duration: Duration(milliseconds: 500), curve: Curves.easeInOut);
+        await _controller.animateTo(_controller.position.maxScrollExtent / 2, duration: animSlow, curve: Curves.easeInOut);
         await Future.delayed(Duration(milliseconds: 200));
         ShowCaseWidget.of(context).startShowCase([_uiSetupGuideKey]);
         while (!ShowCaseWidget.of(context).isShowCaseCompleted) {
@@ -166,7 +167,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                           children: [
                             Expanded(
                               child: AnimatedContainer(
-                                duration: Duration(milliseconds: 200),
+                                duration: animFast,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.only(
                                     topLeft: cornerRadiusMD,
@@ -223,7 +224,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                                             fontSize: textMD,
                                             fontWeight: FontWeight.bold,
                                           ),
-                                          duration: Duration(milliseconds: 200),
+                                          duration: animFast,
                                         ),
                                       ],
                                     ),
@@ -233,7 +234,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                             ),
                             Expanded(
                               child: AnimatedContainer(
-                                duration: Duration(milliseconds: 200),
+                                duration: animFast,
                                 decoration: BoxDecoration(borderRadius: BorderRadius.zero, color: colours.tertiaryLight),
                                 padding: EdgeInsets.symmetric(vertical: 3),
                                 child: Container(
@@ -268,7 +269,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                                               fontSize: textMD,
                                               fontWeight: FontWeight.bold,
                                             ),
-                                            duration: Duration(milliseconds: 200),
+                                            duration: animFast,
                                           ),
                                           SizedBox(height: spaceXXXS),
                                           Transform.flip(
@@ -288,7 +289,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                             ),
                             Expanded(
                               child: AnimatedContainer(
-                                duration: Duration(milliseconds: 200),
+                                duration: animFast,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.only(
                                     topLeft: Radius.zero,
@@ -345,7 +346,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                                             fontSize: textMD,
                                             fontWeight: FontWeight.bold,
                                           ),
-                                          duration: Duration(milliseconds: 200),
+                                          duration: animFast,
                                         ),
                                       ],
                                     ),
@@ -608,6 +609,20 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                         await Logger.reportIssue(context, From.GLOBAL_SETTINGS);
                       },
                     ),
+                    if (kDebugMode) ...[
+                      SizedBox(height: spaceSM),
+                      ButtonSetting(
+                        text: 'FAKE ERROR',
+                        icon: FontAwesomeIcons.explosion,
+                        textColor: colours.primaryDark,
+                        iconColor: colours.primaryDark,
+                        buttonColor: colours.tertiaryWarning,
+                        onPressed: () async {
+                          Logger.logError(LogType.Sync, 'uncommitted changes exist in index (at line 1291)', StackTrace.current);
+                          await Logger.dismissError(context);
+                        },
+                      ),
+                    ],
                     SizedBox(height: spaceMD),
                     ButtonSetting(
                       text: t.shareLogs,
@@ -738,7 +753,6 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                       richContent: ShowcaseTooltipContent(
                         title: t.showcaseSetupGuideTitle,
                         subtitle: t.showcaseSetupGuideSubtitle,
-                        arrowUp: true,
                         featureRows: [
                           ShowcaseFeatureRow(icon: FontAwesomeIcons.chalkboardUser, text: t.showcaseSetupGuideFeatureSetup),
                           ShowcaseFeatureRow(icon: FontAwesomeIcons.route, text: t.showcaseSetupGuideFeatureTour),
@@ -846,6 +860,7 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                       setFn: (value) => repoManager.setString(StorageKey.repoman_defaultAuthorName, value.trim()),
                       getFn: demo ? () async => "" : () => repoManager.getString(StorageKey.repoman_defaultAuthorName),
                       title: t.authorNameLabel,
+                      description: t.authorNameDescription,
                       hint: t.authorName,
                     ),
                     SizedBox(height: spaceMD),
@@ -853,14 +868,8 @@ class _GlobalSettingsMain extends State<GlobalSettingsMain> with WidgetsBindingO
                       setFn: (value) => repoManager.setString(StorageKey.repoman_defaultAuthorEmail, value.trim()),
                       getFn: demo ? () async => "" : () => repoManager.getString(StorageKey.repoman_defaultAuthorEmail),
                       title: t.authorEmailLabel,
+                      description: t.authorEmailDescription,
                       hint: t.authorEmail,
-                    ),
-                    SizedBox(height: spaceMD),
-                    ItemSetting(
-                      setFn: (value) => repoManager.setString(StorageKey.repoman_defaultRemote, value),
-                      getFn: () => repoManager.getString(StorageKey.repoman_defaultRemote),
-                      title: t.remoteLabel,
-                      hint: t.defaultRemote,
                     ),
 
                     SizedBox(height: spaceLG + spaceMD),

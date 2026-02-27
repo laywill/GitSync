@@ -74,10 +74,16 @@ enum LogType {
   DiscardDir,
   DiscardGitIndex,
   DiscardFetchHead,
+  PruneCorruptedObjects,
   GetSubmodules,
   HasGitFilters,
   DownloadChanges,
   UploadChanges,
+  ListRemotes,
+  AddRemote,
+  DeleteRemote,
+  RenameRemote,
+  InitRepo,
 }
 
 enum From { GLOBAL_SETTINGS, ERROR_DIALOG, CODE_EDITOR, SYNC_DURING_DETACHED_HEAD }
@@ -124,7 +130,6 @@ class Logger {
       final error = await repoManager.getStringNullable(StorageKey.repoman_erroring);
       if (error == null) return;
 
-      await repoManager.setStringNullable(StorageKey.repoman_erroring, null);
       try {
         await notificationsPlugin.cancel(_errorNotificationId);
       } catch (e) {}
@@ -138,7 +143,8 @@ class Logger {
       }
       if (context == null) return;
 
-      await ErrorOccurredDialog.showDialog(context, error, () => Logger.reportIssue(context, From.ERROR_DIALOG));
+      await ErrorOccurredDialog.showDialog(context, error, () => Logger.reportIssue(context, From.ERROR_DIALOG, errorMessage: error));
+      await repoManager.setStringNullable(StorageKey.repoman_erroring, null);
     });
   }
 
@@ -155,7 +161,7 @@ class Logger {
     await notificationsPlugin.show(_errorNotificationId, reportBug, contentText ?? reportABug, notificationDetails);
   }
 
-  static Future<void> reportIssue(BuildContext context, From from) async {
+  static Future<void> reportIssue(BuildContext context, From from, {String? errorMessage}) async {
     String? reportIssueToken = await repoManager.getStringNullable(StorageKey.repoman_reportIssueToken);
     if (reportIssueToken == "" || reportIssueToken == null) {
       SettingsManager tempSettingsManager = SettingsManager();
@@ -178,11 +184,20 @@ class Logger {
 
     if (reportIssueToken == "" || reportIssueToken == null) return;
 
-    await GithubIssueReportDialog.showDialog(context, (title, description, minimalRepro, includeLogFiles) async {
+    String? initialTitle;
+    if (errorMessage != null) {
+      final errorMatch = RegExp(r'Error: (.+)').firstMatch(errorMessage);
+      final extracted = errorMatch != null ? errorMatch.group(1)! : errorMessage.split('\n').first;
+      initialTitle = 'Error: `$extracted`';
+    }
+
+    final deviceInfoEntries = await generateDeviceInfoEntries();
+
+    await GithubIssueReportDialog.showDialog(context, initialTitle: initialTitle, deviceInfoEntries: deviceInfoEntries, (title, description, minimalRepro, includeLogFiles) async {
       final logs = !includeLogFiles
           ? ""
           : utf8.decode(utf8.encode((await _generateLogs()).split("\n").reversed.join("\n")).take(62 * 1024).toList(), allowMalformed: true);
-      final deviceInfo = await generateDeviceInfo();
+      final deviceInfo = deviceInfoEntries.map((e) => '**${e.$1}:** ${e.$2}').join('\n');
 
       final url = Uri.parse('https://api.github.com/repos/ViscousPot/GitSync/issues');
 
@@ -230,7 +245,7 @@ $logs
     });
   }
 
-  static Future<String> generateDeviceInfo() async {
+  static Future<List<(String, String)>> generateDeviceInfoEntries() async {
     final deviceInfo = DeviceInfoPlugin();
     final packageInfo = await PackageInfo.fromPlatform();
 
@@ -249,29 +264,34 @@ $logs
 
     String appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
 
-    return """
-**Platform:** ${Platform.isIOS ? "iOS" : "Android"}
-**Device Model:** $deviceModel
-**OS Version:** $osVersion
-**App Version:** $appVersion
+    final entries = <(String, String)>[
+      ('Platform', Platform.isIOS ? 'iOS' : 'Android'),
+      ('Device Model', deviceModel),
+      ('OS Version', osVersion),
+      ('App Version', appVersion),
+      ('Git Provider', '${await uiSettingsManager.getStringNullable(StorageKey.setman_gitProvider)}'),
+      ('Repo URL', '${await uiSettingsManager.getStringList(StorageKey.setman_remoteUrlLink)}'),
+    ];
 
-**Git Provider:** ${await uiSettingsManager.getStringNullable(StorageKey.setman_gitProvider)}
-**Repo URL:** ${await uiSettingsManager.getStringList(StorageKey.setman_remoteUrlLink)}
+    if (await AccessibilityServiceHelper.isAccessibilityServiceEnabled()) {
+      entries.addAll([
+        ('Package Names', '[${(await uiSettingsManager.getApplicationPackages()).join(", ")}]'),
+        ('Sync on app opened', (await uiSettingsManager.getBool(StorageKey.setman_syncOnAppOpened)) ? '🟢' : '⭕'),
+        ('Sync on app closed', (await uiSettingsManager.getBool(StorageKey.setman_syncOnAppClosed)) ? '🟢' : '⭕'),
+      ]);
+    }
 
-${await AccessibilityServiceHelper.isAccessibilityServiceEnabled() ? """
-**App Sync**
-**Package Names:** [${(await uiSettingsManager.getApplicationPackages()).join(", ")}]
-**Sync on app opened:** ${(await uiSettingsManager.getBool(StorageKey.setman_syncOnAppOpened)) ? "🟢" : "⭕"}
-**Sync on app closed&nbsp;&nbsp;:** ${(await uiSettingsManager.getBool(StorageKey.setman_syncOnAppClosed)) ? "🟢" : "⭕"}
+    final schedule = await uiSettingsManager.getString(StorageKey.setman_schedule);
+    if (schedule.isNotEmpty) {
+      entries.add(('Scheduled Sync', schedule));
+    }
 
-""".trim() : ""}
-${(await uiSettingsManager.getString(StorageKey.setman_schedule)).isNotEmpty ? """
-**Scheduled Sync:** ${await uiSettingsManager.getString(StorageKey.setman_schedule)}
+    return entries;
+  }
 
-""".trim() : ""}
-
-"""
-        .trim();
+  static Future<String> generateDeviceInfo() async {
+    final entries = await generateDeviceInfoEntries();
+    return entries.map((e) => '**${e.$1}:** ${e.$2}').join('\n');
   }
 
   static Future<String> _generateLogs() async {

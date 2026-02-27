@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:GitSync/api/manager/storage.dart';
 import 'package:GitSync/main.dart';
@@ -13,7 +15,10 @@ import 'package:GitSync/api/logger.dart';
 import 'package:GitSync/api/manager/git_manager.dart';
 import 'package:GitSync/constant/strings.dart';
 import 'package:GitSync/gitsync_service.dart';
+import 'package:mmap2/mmap2.dart';
+import 'package:mmap2_flutter/mmap2_flutter.dart';
 import 'package:open_file/open_file.dart';
+import 'package:GitSync/src/rust/api/git_manager.dart' as GitManagerRs;
 import '../../../constant/dimens.dart';
 import '../../../global.dart';
 import '../../../ui/dialog/base_alert_dialog.dart';
@@ -50,18 +55,21 @@ $conflictEnd 77976da35a11db4580b80ae27e8d65caf5208086:gear-update.txt
   (18, "- Notebook & pen"),
 ];
 
-Future<void> showDialog(BuildContext parentContext, List<String> originalConflictingPaths) async {
+Future<void> showDialog(BuildContext parentContext, List<(String, GitManagerRs.ConflictType)> originalConflictingPaths) async {
   bool initialised = false;
   bool isMerging = false;
+  bool isAborting = false;
   int currentIndex = 0;
   late final GlobalKey dialogKey = GlobalKey();
-  List<String> conflictingPaths = [...originalConflictingPaths];
+  List<(String, GitManagerRs.ConflictType)> conflictingPaths = [...originalConflictingPaths];
 
   try {
     await Logger.notificationsPlugin.cancel(mergeConflictNotificationId);
   } catch (e) {
     print(e);
   }
+
+  MmapFlutter.initialize();
 
   final syncMessage = await uiSettingsManager.getSyncMessage();
   final scrollController = AnchorScrollController();
@@ -77,6 +85,19 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
   int conflictIndex = 0;
   List<(int, String)> conflictSections = [];
   bool updating = false;
+  bool isResolvingConflict = false;
+  Mmap? writeMmap;
+
+  void mapFile(String filePath) {
+    writeMmap?.close();
+    writeMmap = Mmap.fromFile(filePath, mode: AccessMode.write);
+  }
+
+  void closeMmap() {
+    writeMmap?.sync();
+    writeMmap?.close();
+    writeMmap = null;
+  }
 
   print(conflictingPaths);
 
@@ -96,10 +117,12 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
       if (bookmarkPath.isEmpty) return;
 
       await useDirectory(bookmarkPath, (bookmarkPath) async => await uiSettingsManager.setGitDirPath(bookmarkPath, true), (path) async {
-        final file = File("$path/${conflictingPaths[conflictIndex]}");
+        final filePath = "$path/${conflictingPaths[conflictIndex].$1}";
+        closeMmap();
+        mapFile(filePath);
 
         List<String> conflictStringSections = [];
-        List<String> lines = await file.readAsLines();
+        List<String> lines = utf8.decode(writeMmap!.writableData, allowMalformed: true).split('\n');
         StringBuffer conflictBuffer = StringBuffer();
         bool inConflict = false;
 
@@ -149,8 +172,21 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
     if (bookmarkPath.isEmpty) return;
 
     await useDirectory(bookmarkPath, (bookmarkPath) async => await uiSettingsManager.setGitDirPath(bookmarkPath, true), (path) async {
-      final file = File("$path/${conflictingPaths[conflictIndex]}");
-      await file.writeAsString(conflictSections.map((section) => section.$2).join('\n'));
+      final filePath = "$path/${conflictingPaths[conflictIndex].$1}";
+      final text = conflictSections.map((section) => section.$2).join('\n');
+      final newBytes = Uint8List.fromList(utf8.encode(text));
+
+      if (writeMmap != null && writeMmap!.isOpen) {
+        if (newBytes.length != writeMmap!.writableData.length) {
+          File(filePath).writeAsStringSync(text);
+          mapFile(filePath);
+        } else {
+          writeMmap!.writableData.setAll(0, newBytes);
+          writeMmap!.sync();
+        }
+      } else {
+        File(filePath).writeAsStringSync(text);
+      }
 
       for (var indexedSection in conflictSections.indexed) {
         conflictSections[indexedSection.$1] = (indexedSection.$1, indexedSection.$2.$2);
@@ -162,7 +198,10 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
     context: parentContext,
     barrierColor: Colors.transparent,
     builder: (BuildContext context) => PopScope(
-      canPop: !isMerging,
+      canPop: !isMerging && !isAborting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) closeMmap();
+      },
       child: StatefulBuilder(
         key: dialogKey,
         builder: (context, setState) {
@@ -244,7 +283,7 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                               Expanded(
                                 child: TextButton.icon(
                                   onPressed: () async =>
-                                      OpenFile.open("${await uiSettingsManager.gitDirPath?.$2}/${conflictingPaths[conflictIndex]}"),
+                                      OpenFile.open("${await uiSettingsManager.gitDirPath?.$2}/${conflictingPaths[conflictIndex].$1}"),
                                   style: ButtonStyle(
                                     alignment: Alignment.centerLeft,
                                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -254,7 +293,7 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                                   ),
                                   icon: FaIcon(FontAwesomeIcons.squareArrowUpRight, color: colours.primaryLight, size: textMD),
                                   label: Text(
-                                    conflictingPaths.isEmpty ? "-" : conflictingPaths[conflictIndex].split("/").last.toUpperCase(),
+                                    conflictingPaths.isEmpty ? "-" : conflictingPaths[conflictIndex].$1.split("/").last.toUpperCase(),
                                     maxLines: 1,
                                     textAlign: TextAlign.start,
                                     style: TextStyle(color: colours.primaryLight, fontSize: textSM, fontWeight: FontWeight.bold),
@@ -337,22 +376,24 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                             ],
                           ),
                           (expanded ? (Widget child) => Expanded(child: child) : (child) => child)(
-                            Padding(
-                              padding: EdgeInsets.all(spaceXS),
-                              child: conflictSections.isEmpty
-                                  ? Center(
-                                      child: CircularProgressIndicator(color: colours.primaryLight, padding: EdgeInsets.all(spaceXS)),
-                                    )
-                                  : SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: SizedBox(
-                                        height: expanded ? double.infinity : MediaQuery.sizeOf(context).height / 3,
-                                        width: double.maxFinite,
-                                        child: AnimatedListView(
-                                          controller: scrollController,
-                                          items: conflictSections,
-                                          isSameItem: (a, b) => a.$1 == b.$1 && a.$2 == b.$2,
-                                          itemBuilder: (BuildContext context, int index) {
+                            Stack(
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.all(spaceXS),
+                                  child: conflictSections.isEmpty
+                                      ? Center(
+                                          child: CircularProgressIndicator(color: colours.primaryLight, padding: EdgeInsets.all(spaceXS)),
+                                        )
+                                      : SingleChildScrollView(
+                                          scrollDirection: Axis.horizontal,
+                                          child: SizedBox(
+                                            height: expanded ? double.infinity : MediaQuery.sizeOf(context).height / 3,
+                                            width: double.maxFinite,
+                                            child: AnimatedListView(
+                                              controller: scrollController,
+                                              items: conflictSections,
+                                              isSameItem: (a, b) => a.$1 == b.$1 && a.$2 == b.$2,
+                                              itemBuilder: (BuildContext context, int index) {
                                             final item = conflictSections[index];
 
                                             if (item.$2.contains(conflictStart)) {
@@ -387,12 +428,17 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                                                         children: [
                                                           Expanded(
                                                             child: TextButton(
-                                                              onPressed: () async {
-                                                                conflictSections.removeAt(index);
-                                                                conflictSections.insertAll(index, localLines);
-                                                                await refreshConflictSectionIndices();
-                                                                setState(() {});
-                                                              },
+                                                              onPressed: isResolvingConflict
+                                                                  ? null
+                                                                  : () async {
+                                                                      isResolvingConflict = true;
+                                                                      setState(() {});
+                                                                      conflictSections.removeAt(index);
+                                                                      conflictSections.insertAll(index, localLines);
+                                                                      await refreshConflictSectionIndices();
+                                                                      isResolvingConflict = false;
+                                                                      setState(() {});
+                                                                    },
                                                               style: ButtonStyle(
                                                                 backgroundColor: WidgetStatePropertyAll(colours.tertiaryInfo),
                                                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -419,13 +465,18 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                                                           SizedBox(width: spaceXXS),
                                                           Expanded(
                                                             child: TextButton(
-                                                              onPressed: () async {
-                                                                conflictSections.removeAt(index);
-                                                                conflictSections.insertAll(index, remoteLines);
-                                                                conflictSections.insertAll(index, localLines);
-                                                                await refreshConflictSectionIndices();
-                                                                setState(() {});
-                                                              },
+                                                              onPressed: isResolvingConflict
+                                                                  ? null
+                                                                  : () async {
+                                                                      isResolvingConflict = true;
+                                                                      setState(() {});
+                                                                      conflictSections.removeAt(index);
+                                                                      conflictSections.insertAll(index, remoteLines);
+                                                                      conflictSections.insertAll(index, localLines);
+                                                                      await refreshConflictSectionIndices();
+                                                                      isResolvingConflict = false;
+                                                                      setState(() {});
+                                                                    },
                                                               style: ButtonStyle(
                                                                 backgroundColor: WidgetStatePropertyAll(colours.tertiaryLight),
                                                                 visualDensity: VisualDensity.compact,
@@ -452,12 +503,17 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                                                           SizedBox(width: spaceXXS),
                                                           Expanded(
                                                             child: TextButton(
-                                                              onPressed: () async {
-                                                                conflictSections.removeAt(index);
-                                                                conflictSections.insertAll(index, remoteLines);
-                                                                await refreshConflictSectionIndices();
-                                                                setState(() {});
-                                                              },
+                                                              onPressed: isResolvingConflict
+                                                                  ? null
+                                                                  : () async {
+                                                                      isResolvingConflict = true;
+                                                                      setState(() {});
+                                                                      conflictSections.removeAt(index);
+                                                                      conflictSections.insertAll(index, remoteLines);
+                                                                      await refreshConflictSectionIndices();
+                                                                      isResolvingConflict = false;
+                                                                      setState(() {});
+                                                                    },
                                                               style: ButtonStyle(
                                                                 backgroundColor: WidgetStatePropertyAll(colours.tertiaryWarning),
                                                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -575,6 +631,17 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                                         ),
                                       ),
                                     ),
+                                ),
+                                if (isResolvingConflict)
+                                  Positioned.fill(
+                                    child: Container(
+                                      color: colours.secondaryDark.withValues(alpha: 0.7),
+                                      child: Center(
+                                        child: CircularProgressIndicator(color: colours.primaryLight),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -587,10 +654,14 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton(
+                  TextButton.icon(
                     onPressed: () async {
-                      if (isMerging) return;
+                      if (isMerging || isAborting) return;
 
+                      isAborting = true;
+                      setState(() {});
+
+                      closeMmap();
                       await runGitOperation(LogType.AbortMerge, (event) => event);
                       Navigator.of(parentContext).canPop() ? Navigator.pop(parentContext) : null;
                     },
@@ -600,7 +671,15 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
                       padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: spaceMD, vertical: spaceSM)),
                       shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.all(cornerRadiusSM), side: BorderSide.none)),
                     ),
-                    child: Text(
+                    icon: isAborting
+                        ? Container(
+                            height: textSM,
+                            width: textSM,
+                            margin: EdgeInsets.only(right: spaceXXXS),
+                            child: CircularProgressIndicator(color: colours.primaryLight),
+                          )
+                        : null,
+                    label: Text(
                       t.abortMerge.toUpperCase(),
                       style: TextStyle(color: colours.primaryLight, fontSize: textSM, fontWeight: FontWeight.bold),
                     ),
@@ -620,9 +699,10 @@ Future<void> showDialog(BuildContext parentContext, List<String> originalConflic
 
                             isMerging = true;
 
+                            closeMmap();
                             FlutterBackgroundService().invoke(GitsyncService.MERGE, {
                               COMMIT_MESSAGE: commitMessageController.text.isEmpty ? syncMessage : commitMessageController.text,
-                              CONFLICTING_PATHS: originalConflictingPaths.join(conflictSeparator),
+                              CONFLICTING_PATHS: originalConflictingPaths.map((e) => e.$1).join(conflictSeparator),
                             });
                             setState(() {});
                           }

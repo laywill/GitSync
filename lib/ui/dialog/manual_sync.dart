@@ -16,10 +16,13 @@ import '../../../constant/dimens.dart';
 import '../../../ui/dialog/base_alert_dialog.dart';
 import 'package:GitSync/ui/dialog/confirm_discard_changes.dart' as ConfirmDiscardChangesDialog;
 
-Future<void> showDialog(BuildContext context) async {
+Future<bool> showDialog(BuildContext context, {bool? hasRemotes}) async {
   final syncMessageController = TextEditingController();
   final selectedFiles = <String>[];
   final clientModeEnabled = await uiSettingsManager.getClientModeEnabled();
+  final bool resolvedHasRemotes =
+      hasRemotes ??
+      (await runGitOperation<List<String>>(LogType.ListRemotes, (event) => event?["result"].map<String>((r) => "$r").toList()))?.isNotEmpty == true;
 
   if (demo) {
     selectedFiles.add("storage/external/example/file_changed.md");
@@ -28,6 +31,7 @@ Future<void> showDialog(BuildContext context) async {
   bool uploading = false;
   bool staging = false;
   bool unstaging = false;
+  bool committed = false;
   StateSetter? setStater;
 
   Future<List<(String, int)>> uncommitedFilePaths = runGitOperation<List<(String, int)>>(
@@ -53,7 +57,7 @@ Future<void> showDialog(BuildContext context) async {
     if (context.mounted) setStater?.call(() {});
   }
 
-  return mat.showDialog(
+  await mat.showDialog(
     context: context,
     barrierColor: Colors.transparent,
     builder: (BuildContext context) => PopScope(
@@ -150,6 +154,7 @@ Future<void> showDialog(BuildContext context) async {
                                           await runGitOperation(LogType.Commit, (event) => event, {
                                             "syncMessage": syncMessageController.text.isEmpty ? null : syncMessageController.text,
                                           });
+                                          committed = true;
                                           uploading = false;
                                           await reload();
                                           if (context.mounted) setStater?.call(() {});
@@ -562,12 +567,19 @@ Future<void> showDialog(BuildContext context) async {
                                         uploading = true;
                                         if (context.mounted) setState(() {});
 
-                                        await runGitOperation(LogType.UploadChanges, (event) => event, {
-                                          "repomanRepoindex": await repoManager.getInt(StorageKey.repoman_repoIndex),
-                                          "filePaths": selectedFiles,
-                                          "syncMessage": syncMessageController.text.isEmpty ? null : syncMessageController.text,
-                                        });
-                                        FlutterBackgroundService().on("uploadChanges-syncCallback").first.then((_) async {});
+                                        if (resolvedHasRemotes) {
+                                          await runGitOperation(LogType.UploadChanges, (event) => event, {
+                                            "repomanRepoindex": await repoManager.getInt(StorageKey.repoman_repoIndex),
+                                            "filePaths": selectedFiles,
+                                            "syncMessage": syncMessageController.text.isEmpty ? null : syncMessageController.text,
+                                          });
+                                          FlutterBackgroundService().on("uploadChanges-syncCallback").first.then((_) async {});
+                                        } else {
+                                          await runGitOperation(LogType.Stage, (event) => event, {"paths": selectedFiles});
+                                          await runGitOperation(LogType.Commit, (event) => event, {
+                                            "syncMessage": syncMessageController.text.isEmpty ? null : syncMessageController.text,
+                                          });
+                                        }
 
                                         selectedFiles.clear();
                                         uploading = false;
@@ -612,4 +624,5 @@ Future<void> showDialog(BuildContext context) async {
       ),
     ),
   );
+  return committed;
 }

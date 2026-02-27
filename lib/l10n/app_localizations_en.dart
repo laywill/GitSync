@@ -48,6 +48,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get rename => 'Rename';
 
   @override
+  String get renameDescription => 'Rename the selected file or folder';
+
+  @override
+  String get selectAllDescription => 'Select all visible files and folders';
+
+  @override
+  String get deselectAllDescription => 'Deselect all selected files and folders';
+
+  @override
   String get add => 'Add';
 
   @override
@@ -961,10 +970,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authorNameLabel => 'author name';
 
   @override
+  String get authorNameDescription => 'used to identify you in commit history';
+
+  @override
   String get authorName => 'JohnSmith12';
 
   @override
   String get authorEmailLabel => 'author email';
+
+  @override
+  String get authorEmailDescription => 'attached to your commits for attribution';
 
   @override
   String get authorEmail => 'john12@smith.com';
@@ -1290,6 +1305,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get submodulesFoundAction => 'Add Submodules';
 
   @override
+  String get addRemote => 'Add Remote';
+
+  @override
+  String get deleteRemote => 'Delete Remote';
+
+  @override
+  String get renameRemote => 'Rename Remote';
+
+  @override
+  String get remoteName => 'Remote Name';
+
+  @override
+  String get confirmDeleteRemote => 'Are you sure you want to delete the remote \"%s\"?';
+
+  @override
   String get confirmBranchCheckoutTitle => 'Checkout Branch?';
 
   @override
@@ -1338,7 +1368,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ongoingMergeConflict => 'Ongoing merge conflict';
 
   @override
+  String get networkStallRetry => 'Poor network — will retry shortly';
+
+  @override
   String get networkUnavailableRetry => 'Network unavailable!\nGitSync will retry when reconnected';
+
+  @override
+  String get failedToResolveAddressMessage => 'Could not reach the server. Check your internet connection or verify the repository URL is correct.';
 
   @override
   String get pullFailed => 'Pull failed! Please check for uncommitted changes and try again.';
@@ -1433,4 +1469,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get trackIssue => 'Track Issue & Respond to Messages';
+
+  @override
+  String get createNewRepository => 'Create New Repository';
+
+  @override
+  String get noGitRepoFoundMsg => 'No git repository was found in the selected folder. Would you like to create a new one here?';
+
+  @override
+  String get remoteSetupLaterMsg => 'You can set up a remote later to sync with a server.';
+
+  @override
+  String get localOnlyNoRemote => 'Local only — add a remote to sync';
+
+  @override
+  String get noRemoteConfigured => 'No remote configured';
 }

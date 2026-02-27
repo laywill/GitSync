@@ -6,7 +6,8 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `_log`, `commit`, `fast_forward`, `fetch_remote_priv`, `get_branch_name_priv`, `get_default_callbacks`, `get_staged_file_paths_priv`, `get_uncommitted_file_paths_priv`, `pull_changes_priv`, `push_changes_priv`, `run_with_lock`, `set_author`, `update_submodules_priv`
+// These functions are ignored because they are not marked as `pub`: `_log`, `check`, `commit`, `configure_network_timeouts`, `fast_forward`, `fetch_remote_priv`, `get_branch_name_priv`, `get_default_callbacks`, `get_staged_file_paths_priv`, `get_uncommitted_file_paths_priv`, `has_local_changes_priv`, `new`, `pull_changes_priv`, `push_changes_priv`, `run_with_lock`, `set_author`, `update_submodules_priv`, `was_stalled`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `StallDetector`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`
 // These functions are ignored (category: IgnoreBecauseNotAllowedOwner): `safe_wline`
 
@@ -45,6 +46,20 @@ Future<List<(String, int)>?> stringIntListRunWithLock({
   required String fnName,
   required FutureOr<List<(String, int)>?> Function() function,
 }) => RustLib.instance.api.crateApiGitManagerStringIntListRunWithLock(
+  queueDir: queueDir,
+  index: index,
+  priority: priority,
+  fnName: fnName,
+  function: function,
+);
+
+Future<List<(String, ConflictType)>?> stringConflicttypeListRunWithLock({
+  required String queueDir,
+  required int index,
+  required int priority,
+  required String fnName,
+  required FutureOr<List<(String, ConflictType)>?> Function() function,
+}) => RustLib.instance.api.crateApiGitManagerStringConflicttypeListRunWithLock(
   queueDir: queueDir,
   index: index,
   priority: priority,
@@ -122,10 +137,28 @@ Future<void> voidRunWithLock({
   function: function,
 );
 
-Future<bool> isLocked({required String queueDir, required int index}) => RustLib
-    .instance
-    .api
-    .crateApiGitManagerIsLocked(queueDir: queueDir, index: index);
+Future<String?> isLocked({required String queueDir, required int index}) =>
+    RustLib.instance.api.crateApiGitManagerIsLocked(
+      queueDir: queueDir,
+      index: index,
+    );
+
+/// Clear stale queue files using flock-based liveness detection.
+///
+/// For each `flock_queue_{index}` file in the queues directory:
+/// 1. Try a non-blocking exclusive flock on the corresponding `flock_active_{index}`.
+/// 2. If the flock succeeds, no operation is actively running for that repo,
+///    so the queue file is safe to truncate.
+/// 3. If the flock fails (EWOULDBLOCK), an operation is in progress —
+///    leave the queue file alone.
+///
+/// The OS automatically releases flocks when a process dies, so crashed
+/// processes are correctly detected as "not running".
+Future<void> clearStaleLocks({required String queueDir, required bool force}) =>
+    RustLib.instance.api.crateApiGitManagerClearStaleLocks(
+      queueDir: queueDir,
+      force: force,
+    );
 
 Future<void> init({String? homepath}) =>
     RustLib.instance.api.crateApiGitManagerInit(homepath: homepath);
@@ -190,10 +223,14 @@ Future<Diff> getCommitDiff({
 Future<List<Commit>> getRecentCommits({
   required String pathString,
   required String remoteName,
+  required Map<String, (int, int)> cachedDiffStats,
+  required BigInt skip,
   required FutureOr<void> Function(LogType, String) log,
 }) => RustLib.instance.api.crateApiGitManagerGetRecentCommits(
   pathString: pathString,
   remoteName: remoteName,
+  cachedDiffStats: cachedDiffStats,
+  skip: skip,
   log: log,
 );
 
@@ -417,7 +454,7 @@ Future<void> discardChanges({
   log: log,
 );
 
-Future<List<String>> getConflicting({
+Future<List<(String, ConflictType)>> getConflicting({
   required String pathString,
   required FutureOr<void> Function(LogType, String) log,
 }) => RustLib.instance.api.crateApiGitManagerGetConflicting(
@@ -489,6 +526,56 @@ Future<void> setRemoteUrl({
   log: log,
 );
 
+Future<List<String>> listRemotes({
+  required String pathString,
+  required FutureOr<void> Function(LogType, String) log,
+}) => RustLib.instance.api.crateApiGitManagerListRemotes(
+  pathString: pathString,
+  log: log,
+);
+
+Future<void> initRepository({
+  required String pathString,
+  required FutureOr<void> Function(LogType, String) log,
+}) => RustLib.instance.api.crateApiGitManagerInitRepository(
+  pathString: pathString,
+  log: log,
+);
+
+Future<void> addRemote({
+  required String pathString,
+  required String remoteName,
+  required String remoteUrl,
+  required FutureOr<void> Function(LogType, String) log,
+}) => RustLib.instance.api.crateApiGitManagerAddRemote(
+  pathString: pathString,
+  remoteName: remoteName,
+  remoteUrl: remoteUrl,
+  log: log,
+);
+
+Future<void> deleteRemote({
+  required String pathString,
+  required String remoteName,
+  required FutureOr<void> Function(LogType, String) log,
+}) => RustLib.instance.api.crateApiGitManagerDeleteRemote(
+  pathString: pathString,
+  remoteName: remoteName,
+  log: log,
+);
+
+Future<void> renameRemote({
+  required String pathString,
+  required String oldName,
+  required String newName,
+  required FutureOr<void> Function(LogType, String) log,
+}) => RustLib.instance.api.crateApiGitManagerRenameRemote(
+  pathString: pathString,
+  oldName: oldName,
+  newName: newName,
+  log: log,
+);
+
 Future<void> checkoutBranch({
   required String pathString,
   required String remote,
@@ -528,6 +615,11 @@ Future<void> createBranch({
   log: log,
 );
 
+Future<void> pruneCorruptedLooseObjects({required String pathString}) => RustLib
+    .instance
+    .api
+    .crateApiGitManagerPruneCorruptedLooseObjects(pathString: pathString);
+
 abstract class WithLine {
   Future<WithLine> safeWline({required int line});
 }
@@ -542,6 +634,7 @@ class Commit {
   final int deletions;
   final bool unpulled;
   final bool unpushed;
+  final List<String> tags;
 
   const Commit({
     required this.timestamp,
@@ -553,6 +646,7 @@ class Commit {
     required this.deletions,
     required this.unpulled,
     required this.unpushed,
+    required this.tags,
   });
 
   @override
@@ -565,7 +659,8 @@ class Commit {
       additions.hashCode ^
       deletions.hashCode ^
       unpulled.hashCode ^
-      unpushed.hashCode;
+      unpushed.hashCode ^
+      tags.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -580,8 +675,11 @@ class Commit {
           additions == other.additions &&
           deletions == other.deletions &&
           unpulled == other.unpulled &&
-          unpushed == other.unpushed;
+          unpushed == other.unpushed &&
+          tags == other.tags;
 }
+
+enum ConflictType { text }
 
 class Diff {
   final int insertions;
@@ -657,8 +755,14 @@ enum LogType {
   discardDir,
   discardGitIndex,
   discardFetchHead,
+  pruneCorruptedObjects,
   getSubmodules,
   hasGitFilters,
   downloadChanges,
   uploadChanges,
+  listRemotes,
+  addRemote,
+  deleteRemote,
+  renameRemote,
+  initRepo,
 }
