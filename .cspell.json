@@ -2,6 +2,10 @@
     "version": "0.2",
     "language": "en-GB",
     "allowCompoundWords": true,
+    "import": [
+        "@cspell/dict-de-de/cspell-ext.json",
+        "@cspell/dict-ru_ru/cspell-ext.json"
+    ],
     "dictionaries": [
         "bash",
         "companies",
@@ -74,8 +78,6 @@
     ],
     "ignorePaths": [
         "rust_builder/cargokit/**",
-        "fastlane/metadata/android/de/**",
-        "fastlane/metadata/android/ru/**",
         "notes.md",
         "task_plan.md"
     ],
