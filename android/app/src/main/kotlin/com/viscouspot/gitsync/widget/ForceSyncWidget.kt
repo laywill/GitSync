@@ -90,7 +90,7 @@ class ForceSyncWidget : GlanceAppWidget() {
         ) {
             Box(
                 modifier = GlanceModifier.size(48.dp).padding(end = if (showSyncText) 16.dp else 0.dp),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Image(
                     provider = ImageProvider(R.drawable.sync_now),

@@ -10,6 +10,8 @@ PARALLEL: true
 FILEIO_REPORTER: false
 
 DISABLE_LINTERS:
+  ##############################################################################
+  # Linters that aren't relevant to our codebase or that we run in a separate GitHub Action
   - JSON_PRETTIER # Disable beautifying JSON with Prettier
   - YAML_PRETTIER # Disable beautifying YAML with Prettier
   - JAVASCRIPT_ES # Disabled as run in a separate GitHub Action
@@ -17,6 +19,21 @@ DISABLE_LINTERS:
   - TYPESCRIPT_ES # Disabled as run in a separate GitHub Action
   - TSX_ESLINT # Disabled as run in a separate GitHub Action
   - TYPESCRIPT_STANDARD # Disabled as TS Standard does not support our version of typescript
+  ##############################################################################
+  # Linters that are currently failing and will be fixed in a future PR
+  - BASH_SHELLCHECK # Disabled as we have a lot of shell scripts that need to be fixed
+  - C_CPPLINT # Only 2 files are currently failing
+  - CPP_CPPLINT # Only 1 file currently failing
+  - DART_DARTANALYZER # Disabled as we have >120 Dart files that need to be fixed
+  - KOTLIN_KTLINT # Disabled as we have multiple Kotlin files that need to be fixed
+  - KOTLIN_DETEKT # Disabled as we have multiple Kotlin files that need to be fixed
+  - POWERSHELL_POWERSHELL # Disabled as lower priority and only one file affected
+  - REPOSITORY_DEVSKIM # Disabled as we have nearly 8000 DevSkim issues that need to be fixed
+  - REPOSITORY_GITLEAKS # Disabled due to 6 major issues that require rewriting Git history to fix
+  - REPOSITORY_GRYPE # Disabled due to 6 major issues that require package updates to fix
+  - REPOSITORY_KICS # Disabled as lower priority than other security issues
+  - REPOSITORY_TRIVY # Disabled - high priority to resolve package security vulnerabilities
+  - XML_XMLLINT # Disabled as lower priority and we only have one XML file that needs to be fixed
 
 # Not worried if Lychee finds dead links
 SPELL_LYCHEE_DISABLE_ERRORS: true

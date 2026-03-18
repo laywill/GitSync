@@ -97,7 +97,7 @@ class ManualSyncWidget : GlanceAppWidget() {
         ) {
             Box(
                 modifier = GlanceModifier.size(48.dp).padding(end = if (showShortText) 16.dp else 0.dp),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Image(
                     provider = ImageProvider(R.drawable.manual_sync),

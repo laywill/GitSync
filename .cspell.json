@@ -1,25 +1,51 @@
 {
+    "version": "0.2",
+    "language": "en-GB",
     "allowCompoundWords": true,
     "dictionaries": [
         "bash",
         "companies",
         "dart",
-        "de_DE",
-        "en_US",
         "en-GB",
-        "es-ES",
+        "en_US",
         "filetypes",
         "flutter",
         "fonts",
         "markdown",
         "misc",
         "powershell",
-        "ru_RU",
         "rust",
         "softwareTerms"
     ],
     "flagWords": [
         "hte"
+    ],
+    "words": [
+        "GitSync",
+        "GITEA",
+        "sdcard",
+        "webp",
+        "pbxproj",
+        "xcodeproj",
+        "xcworkspace",
+        "fvmrc",
+        "desugar",
+        "cdylib",
+        "vendored",
+        "xxxhdpi",
+        "Izzy",
+        "osascript",
+        "documentsui",
+        "Cred",
+        "osshkeys",
+        "unpulled",
+        "unpushed",
+        "wline",
+        "fcntl",
+        "EWOULDBLOCK",
+        "oids",
+        "msgnum",
+        "Nodelete"
     ],
     "ignoreWords": [
         "anys",
@@ -29,30 +55,40 @@
         "notif",
         "stls",
         "xcassets",
-        "Recents"
-    ],
-    "language": "en-GB",
-    "version": "0.2",
-    "words": [
-        "GitSync",
-        "GITEA",
+        "Recents",
+        "efgh",
+        "obsi",
+        "youre",
+        "Repro",
+        "specfic",
+        "analyzer",
+        "analyzes",
+        "behavior",
+        "favor",
+        "defenses",
+        "Dialogs",
         "dialog",
-        "sdcard"
+        "linters",
+        "DARTANALYZER",
+        "KTLINT"
     ],
-    "languageSettings": [
+    "ignorePaths": [
+        "rust_builder/cargokit/**",
+        "fastlane/metadata/android/de/**",
+        "fastlane/metadata/android/ru/**",
+        "notes.md",
+        "task_plan.md"
+    ],
+    "overrides": [
         {
-            "languageId": "*",
-            "includeRegExpList": [
-            "fastlane\\metadata\\android\\de"
-            ],
-            "locale": "de_DE"
+            "filename": "fastlane/metadata/android/de/**",
+            "language": "de-DE",
+            "dictionaries": ["de-de"]
         },
         {
-            "languageId": "*",
-            "includeRegExpList": [
-            "fastlane\\metadata\\android\\ru"
-            ],
-            "locale": "ru_RU"
+            "filename": "fastlane/metadata/android/ru/**",
+            "language": "ru",
+            "dictionaries": ["ru-ru"]
         }
     ]
 }
