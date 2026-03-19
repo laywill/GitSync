@@ -1,0 +1,44 @@
+---
+name: CSpell
+
+on: # yamllint disable-line rule:truthy - false positive
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.ref }}-cspell
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  cspell:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install CSpell Dictionaries
+        run: npm install --no-save @cspell/dict-de-de@4.1.2 @cspell/dict-ru_ru@2.3.2
+
+      - name: Run CSpell
+        uses: streetsidesoftware/cspell-action@e464ae97d348eb3beb0c5a6296dc4388ad4484d9
+        with:
+          incremental_files_only: >-
+            ${{
+              !(
+                github.event_name == 'push' &&
+                contains(fromJSON('["refs/heads/main", "refs/heads/master"]'), github.ref)
+              )
+            }}
+          check_dot_files: true
+          strict: true
