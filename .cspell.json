@@ -49,7 +49,9 @@
         "EWOULDBLOCK",
         "oids",
         "msgnum",
-        "Nodelete"
+        "Nodelete",
+        "Gitea",
+        "Accessibility"
     ],
     "ignoreWords": [
         "anys",
@@ -85,12 +87,14 @@
         {
             "filename": "fastlane/metadata/android/de/**",
             "language": "de-DE",
-            "dictionaries": ["de-de"]
+            "dictionaries": ["de-de"],
+            "words": ["Barrierefreiheitsdienstes"]
         },
         {
             "filename": "fastlane/metadata/android/ru/**",
             "language": "ru",
-            "dictionaries": ["ru-ru"]
+            "dictionaries": ["ru-ru"],
+            "words": ["коммита"]
         }
     ]
 }

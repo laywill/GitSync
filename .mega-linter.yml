@@ -54,7 +54,8 @@ RUST_CLIPPY_ARGUMENTS: "-- --manifest-path=./rust/Cargo.toml"
 # CSpell Config
 SPELL_CSPELL_FILTER_REGEX_EXCLUDE: (\.cspell\.json|\.gitignore)
 SPELL_CSPELL_PRE_COMMANDS:
-  - command: npm install @cspell/dict-de-de @cspell/dict-ru_ru
+  # - command: npm install --quiet --omit=optional @cspell/dict-de-de @cspell/dict-ru_ru
+  - command: npm install --quiet --omit=optional @cspell/dict-de-de@4.1.2 @cspell/dict-ru_ru@2.3.2
     cwd: "root"
     continue_if_failed: false
 
