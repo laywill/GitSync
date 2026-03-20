@@ -45,6 +45,7 @@ jobs:
         # --gitignore:        Respect .gitignore to skip ignored directories and files
         # --dot:              Include hidden files and directories in the check
         run: |
+          set -euo pipefail
           if [[ "${{ github.event_name }}" == "push" ]] && \
              [[ "${{ github.ref }}" =~ ^refs/(heads/(main|master)|tags/v) ]]; then
             echo "Running full spell check (push to main/master/version tag)"
