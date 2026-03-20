@@ -53,7 +53,7 @@ JSON_JSONLINT_ARGUMENTS: "-- --comments --trailing-newline --trailing-commas"
 RUST_CLIPPY_ARGUMENTS: "-- --manifest-path=./rust/Cargo.toml"
 
 # Filter Configuration
-FILTER_REGEX_EXCLUDE: (\.git/|\.github/|\.vite/|node_modules/|\.vscode/|dist/|\.mega-linter|megalinter-reports/)
+FILTER_REGEX_EXCLUDE: (\.git/|\.github/|node_modules/|\.vscode/|dist/|\.mega-linter|megalinter-reports/)
 
 # Checkov Configuration
 REPOSITORY_CHECKOV_ARGUMENTS: "--skip-check CKV2_GHA_1"
