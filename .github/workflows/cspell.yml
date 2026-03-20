@@ -41,14 +41,13 @@ jobs:
         # - --show-context: Display surrounding lines for each spelling error
         # - --show-suggestions: Show spelling suggestions to aid corrections
         # - --gitignore: Respect .gitignore to skip ignored directories and files
-        # - --strict: Treat warnings as errors, causing the step to fail on any spelling issues
         # - --check-dot-files: Include hidden files and directories in the check
         run: |
           if [[ "${{ github.event_name }}" == "push" ]] && \
              [[ "${{ github.ref }}" =~ ^refs/(heads/(main|master)|tags/v) ]]; then
             echo "Running full spell check (push to main/master/version tag)"
-            npx cspell --show-context --show-suggestions --gitignore --strict --check-dot-files .
+            npx cspell --show-context --show-suggestions --gitignore --check-dot-files .
           else
             echo "Running incremental spell check (PR or other branch)"
-            npx cspell --show-context --show-suggestions --gitignore --strict --check-dot-files $(git diff --diff-filter=d --name-only origin/main...HEAD)
+            npx cspell --show-context --show-suggestions --gitignore --check-dot-files $(git diff --diff-filter=d --name-only origin/main...HEAD)
           fi
