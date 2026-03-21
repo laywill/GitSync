@@ -1,0 +1,60 @@
+---
+name: CSpell
+
+on: # yamllint disable-line rule:truthy - false positive
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+concurrency:
+  group: ${{ github.ref }}-cspell
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  cspell:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+
+      - name: Install CSpell Dictionaries
+        run: npm install --no-save cspell@9.7.0 @cspell/dict-de-de@4.1.2 @cspell/dict-ru_ru@2.3.2
+
+      - name: Run CSpell
+        # Conditional spell checking strategy:
+        # - Full check (all files) on pushes to main/master branches or version tags (v*) to ensure thorough
+        #   validation before releases and on the default branch
+        # - Incremental check (changed files only) on PRs and feature branches to provide fast feedback
+        #   without re-checking files already validated in main
+        #
+        # Flags:
+        # --show-context:     Display surrounding lines for each spelling error
+        # --show-suggestions: Show spelling suggestions to aid corrections
+        # --gitignore:        Respect .gitignore to skip ignored directories and files
+        # --dot:              Include hidden files and directories in the check
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]] && \
+             [[ "${{ github.ref }}" =~ ^refs/(heads/(main|master)|tags/v) ]]; then
+            echo "Running full spell check (push to main/master/version tag)"
+            npx cspell --show-context --show-suggestions --gitignore --dot .
+          else
+            echo "Running incremental spell check (PR or other branch)"
+            files=$(git diff --diff-filter=d --name-only origin/main...HEAD) || {
+              echo "Error: Failed to get changed files. Falling back to full check."
+              files="."
+            }
+            npx cspell --show-context --show-suggestions --gitignore --dot $files
+          fi

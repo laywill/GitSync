@@ -1,6 +1,5 @@
 appId: com.viscouspot.gitsync
 ---
-
 - runFlow: ../common/kill.yaml
 
 - runFlow: ../common/launch_notif_perm.yaml
@@ -43,5 +42,3 @@ appId: com.viscouspot.gitsync
 - runFlow: ../clone/flows/select_folder_dialog/assert_not.yaml
 - runFlow: ../home/flows/deselect_repo/positive.yaml
 - runFlow: ../common/kill.yaml
-
-

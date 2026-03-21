@@ -1,6 +1,5 @@
 appId: com.viscouspot.gitsync
 ---
-
 - runFlow: ../common/disable_all_files_access.yaml
 - runFlow: ../common/clear_state.yaml
 - runFlow: ../common/kill.yaml
@@ -32,5 +31,3 @@ appId: com.viscouspot.gitsync
 - runFlow: flows/showcase/finish.yaml
 - runFlow: ../home/flows/sync_now/assert.yaml
 - runFlow: ../common/kill.yaml
-
-

@@ -1,0 +1,102 @@
+$schema: https://raw.githubusercontent.com/streetsidesoftware/cspell/main/cspell.schema.json
+version: '0.2'
+language: en-GB
+allowCompoundWords: true
+import:
+  - '@cspell/dict-de-de/cspell-ext.json'
+  - '@cspell/dict-ru_ru/cspell-ext.json'
+dictionaries:
+  - bash
+  - companies
+  - dart
+  - en-GB
+  - en_US
+  - filetypes
+  - flutter
+  - fonts
+  - markdown
+  - misc
+  - powershell
+  - rust
+  - softwareTerms
+flagWords:
+  - hte
+words:
+  - Cred
+  - DARTANALYZER
+  - desugar
+  - DETEKT
+  - Gitea
+  - GITEA
+  - GitSync
+  - Izzy
+  - KICS
+  - kinded
+  - KTLINT
+  - linters
+  - oids
+  - Recents
+  - sdcard
+  - unpulled
+  - unpushed
+  - vars
+  - vendored
+  - venv
+  - webp
+ignoreWords:
+  - antonborri
+  - anys
+  - cdylib
+  - documentsui
+  - efgh
+  - EWOULDBLOCK
+  - fcntl
+  - fvmrc
+  - hardis
+  - lineageos
+  - msgnum
+  - Nodelete
+  - notif
+  - obsi
+  - osascript
+  - osshkeys
+  - pbxproj
+  - Repro
+  - stls
+  - wline
+  - xcassets
+  - xcodeproj
+  - xcworkspace
+  - xxxhdpi
+ignorePaths:
+  # Ignore CSpell configuration files as they contain words that may flag.
+  - .cspell.json
+  - .cspell.yaml
+  # Ignore Git files and directories as they contain commit messages and other content that may flag.
+  - .git/**
+  # Ignore gitignore as it primarily contains file paths that may flag and we want to avoid false positives from it.
+  - .gitignore
+  - .github/**
+  # Ignore node_modules as CSPell is a Node based tool and we don't want to check the tool's own dependencies.
+  - node_modules/**
+  # Ignore configuration files that do not support comments, so no purpose in spell checking them.
+  - .jscpd.json
+  - .vscode/**
+  - .mega-linter/**
+  # Ignore generated reports and build artifacts that may contain content that flags but is not relevant to our codebase.
+  - megalinter-reports/**
+  # Ignore rust builder cargokit as this is vendored code that we do not want to modify.
+  - rust_builder/cargokit/**
+overrides:
+  - filename: 'fastlane/metadata/android/de/**'
+    language: de-DE
+    dictionaries:
+      - de-de
+    words:
+      - Barrierefreiheitsdienstes
+  - filename: 'fastlane/metadata/android/ru/**'
+    language: ru
+    dictionaries:
+      - ru-ru
+    words:
+      - коммита

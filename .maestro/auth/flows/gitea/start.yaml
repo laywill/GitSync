@@ -1,9 +1,8 @@
 appId: com.viscouspot.gitsync
 ---
-
 - runFlow: ../assert.yaml
 - runFlow:
-    when: 
+    when:
       notVisible: "GITEA"
     commands:
       - tapOn: ".*auth dropdown"

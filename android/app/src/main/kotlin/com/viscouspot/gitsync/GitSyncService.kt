@@ -6,7 +6,11 @@ import android.os.IBinder
 import io.flutter.Log
 
 class GitSyncService : Service() {
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         if (intent == null || intent.action == null) {
             return START_STICKY
         }
@@ -27,7 +31,5 @@ class GitSyncService : Service() {
         return START_STICKY
     }
 
-    override fun onBind(p0: Intent?): IBinder? {
-        return null
-    }
+    override fun onBind(p0: Intent?): IBinder? = null
 }

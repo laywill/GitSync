@@ -1,5 +1,6 @@
 package com.viscouspot.gitsync
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,17 +10,20 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.provider.Settings
 import android.text.TextUtils
-import android.app.ActivityManager
-import java.io.File
 import android.widget.Toast
 import io.flutter.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
 
-
-class AccessibilityServiceHelper(private val context: Context) : MethodChannel.MethodCallHandler {
-    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+class AccessibilityServiceHelper(
+    private val context: Context,
+) : MethodChannel.MethodCallHandler {
+    override fun onMethodCall(
+        call: MethodCall,
+        result: MethodChannel.Result,
+    ) {
         when (call.method) {
             "hasLegacySettings" -> {
                 val prefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
@@ -44,7 +48,7 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
                     result.error(
                         "DELETE_LEGACY_SETTINGS_ERROR",
                         "Failed to delete legacy settings: ${e.localizedMessage}",
-                        null
+                        null,
                     )
                 }
             }
@@ -62,10 +66,10 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
             "isExcludedFromRecents" -> {
                 val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                 val tasks = activityManager.appTasks
-                var excluded = false;
+                var excluded = false
                 tasks.forEach { appTask ->
                     excluded =
-                        excluded || (appTask.taskInfo.baseIntent.flags and Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) != 0;
+                        excluded || (appTask.taskInfo.baseIntent.flags and Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS) != 0
                 }
                 result.success(excluded)
             }
@@ -93,23 +97,28 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
                 intent.addCategory(Intent.CATEGORY_LAUNCHER)
                 val apps = context.packageManager.queryIntentActivities(intent, PackageManager.GET_META_DATA)
 
-                val packageNames = apps.map {
-                    it.activityInfo.packageName
-                }.sortedBy {
-                    context.packageManager.getApplicationLabel(
-                        context.packageManager.getApplicationInfo(it, 0)
-                    ).toString()
-                }
+                val packageNames =
+                    apps
+                        .map {
+                            it.activityInfo.packageName
+                        }.sortedBy {
+                            context.packageManager
+                                .getApplicationLabel(
+                                    context.packageManager.getApplicationInfo(it, 0),
+                                ).toString()
+                        }
                 result.success(packageNames)
             }
 
             "getApplicationLabel" -> {
-                val label = context.packageManager.getApplicationLabel(
-                    context.packageManager.getApplicationInfo(
-                        call.arguments as String,
-                        0
-                    )
-                ).toString()
+                val label =
+                    context.packageManager
+                        .getApplicationLabel(
+                            context.packageManager.getApplicationInfo(
+                                call.arguments as String,
+                                0,
+                            ),
+                        ).toString()
                 result.success(label)
             }
 
@@ -119,7 +128,9 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
                 result.success(byteArray)
             }
 
-            else -> result.notImplemented()
+            else -> {
+                result.notImplemented()
+            }
         }
     }
 
@@ -139,19 +150,20 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
             }
         }
 
-        bitmap = if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
-            Bitmap.createBitmap(
-                1,
-                1,
-                Bitmap.Config.ARGB_8888
-            ) // Single color bitmap will be created of 1x1 pixel
-        } else {
-            Bitmap.createBitmap(
-                drawable.intrinsicWidth,
-                drawable.intrinsicHeight,
-                Bitmap.Config.ARGB_8888
-            )
-        }
+        bitmap =
+            if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
+                Bitmap.createBitmap(
+                    1,
+                    1,
+                    Bitmap.Config.ARGB_8888,
+                ) // Single color bitmap will be created of 1x1 pixel
+            } else {
+                Bitmap.createBitmap(
+                    drawable.intrinsicWidth,
+                    drawable.intrinsicHeight,
+                    Bitmap.Config.ARGB_8888,
+                )
+            }
 
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
@@ -159,32 +171,33 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
         return bitmap
     }
 
-
     private fun isAccessibilityServiceEnabled(context: Context): Boolean {
-
         var accessibilityEnabled = 0
         val service: String =
             context.packageName + "/" + GitSyncAccessibilityService::class.java.canonicalName
         try {
-            accessibilityEnabled = Settings.Secure.getInt(
-                context.getApplicationContext().getContentResolver(),
-                Settings.Secure.ACCESSIBILITY_ENABLED
-            )
+            accessibilityEnabled =
+                Settings.Secure.getInt(
+                    context.getApplicationContext().getContentResolver(),
+                    Settings.Secure.ACCESSIBILITY_ENABLED,
+                )
             Log.v("////", "accessibilityEnabled = $accessibilityEnabled")
         } catch (e: Settings.SettingNotFoundException) {
             Log.e(
-                "////", "Error finding setting, default accessibility to not found: "
-                        + e.message
+                "////",
+                "Error finding setting, default accessibility to not found: " +
+                    e.message,
             )
         }
         val mStringColonSplitter = TextUtils.SimpleStringSplitter(':')
 
         if (accessibilityEnabled == 1) {
             Log.v("////", "***ACCESSIBILITY IS ENABLED*** -----------------")
-            val settingValue = Settings.Secure.getString(
-                context.getApplicationContext().getContentResolver(),
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            )
+            val settingValue =
+                Settings.Secure.getString(
+                    context.getApplicationContext().getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                )
             if (settingValue != null) {
                 mStringColonSplitter.setString(settingValue)
                 while (mStringColonSplitter.hasNext()) {
@@ -192,12 +205,12 @@ class AccessibilityServiceHelper(private val context: Context) : MethodChannel.M
 
                     Log.v(
                         "////",
-                        "-------------- > accessibilityService :: $accessibilityService $service"
+                        "-------------- > accessibilityService :: $accessibilityService $service",
                     )
                     if (accessibilityService.equals(service, ignoreCase = true)) {
                         Log.v(
                             "////",
-                            "We've found the correct setting - accessibility is switched on!"
+                            "We've found the correct setting - accessibility is switched on!",
                         )
                         return true
                     }
